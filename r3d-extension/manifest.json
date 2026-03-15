@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "R3D — Offensive Security Intelligence",
+  "version": "5.1.0",
+  "description": "Live attack surface mapping for internal web apps. Intercepts traffic, detects vulnerabilities, replays credentials, fuzzes endpoints, builds attack graphs, and routes everything through LLMs for exploit generation and triage. Session data persists in MongoDB.",
+  "permissions": [
+    "webRequest",
+    "cookies",
+    "activeTab",
+    "storage",
+    "scripting",
+    "sidePanel",
+    "tabs",
+    "debugger"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "http://localhost:4000/*",
+    "http://0.0.0.0:4000/*",
+    "http://127.0.0.1:4000/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/page-world.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "action": {
+    "default_title": "R3D — Offensive Security Intelligence",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/*.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>R3D</title>
+<link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+<div id="app">
+  <div id="session-card"></div>
+
+  <div id="tab-bar">
+    <button class="sp-tab active" data-tab="activity">Activity</button>
+    <button class="sp-tab" data-tab="findings">Findings</button>
+    <button class="sp-tab" data-tab="systems">Systems</button>
+    <button class="sp-tab" data-tab="tokens">Tokens</button>
+    <button class="sp-tab" data-tab="headers">Headers</button>
+  </div>
+
+  <div id="tab-content">
+    <div class="sp-panel active" id="panel-activity"></div>
+    <div class="sp-panel" id="panel-findings"></div>
+    <div class="sp-panel" id="panel-systems"></div>
+    <div class="sp-panel" id="panel-tokens"></div>
+    <div class="sp-panel" id="panel-headers"></div>
+  </div>
+
+  <div id="action-bar">
+    <button class="btn-dashboard" id="btn-dashboard">Open Dashboard</button>
+  </div>
+</div>
+<script src="sidepanel.js"></script>
+</body>
+</html>
