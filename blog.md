@@ -16,19 +16,19 @@ Here is what a single R3D session looks like when persisted:
 {
   "_id": "session-uuid",
   "name": "Silent Falcon-042",
-  "startedAt": "2025-03-14T10:00:00Z",
-  "endedAt": "2025-03-14T11:30:00Z",
+  "startedAt": "2026-03-14T10:00:00Z",
+  "endedAt": "2026-03-14T11:30:00Z",
   "status": "ended",
   "notes": "Testing RBAC controls on internal HR portal",
   "scope": ["hr.internal.example.com", "sso.example.com"],
   "aiEnabled": true,
   "eventCount": 847,
   "events": [
-    { "type": "finding", "ts": 1710414000000, "data": { "title": "Missing HSTS", "severity": "MEDIUM", "cwe": "CWE-523", "systemId": "hr.internal.example.com", "confidence": "high" } },
-    { "type": "request", "ts": 1710414001000, "data": { "url": "https://hr.internal.example.com/api/users", "method": "GET", "status": 200, "systemId": "hr.internal.example.com" } },
-    { "type": "ai", "ts": 1710414500000, "data": { "type": "system_profile", "targetSystem": "hr.internal.example.com", "model": "gemini-2.5-pro" } },
-    { "type": "test_artifact", "ts": 1710415000000, "data": { "testId": "test_143022_8821", "findingTitle": "JWT in localStorage", "verdict": "vulnerable", "output": "[R3D TEST] VULNERABLE: token valid — user=admin@example.com", "snippet": "(async()=>{ ... })()" } },
-    { "type": "imported_finding", "ts": 1710415500000, "data": { "source": "nuclei", "title": "CVE-2024-1234", "severity": "CRITICAL", "templateId": "CVE-2024-1234", "status": "confirmed" } }
+    { "type": "finding", "ts": 1741950000000, "data": { "title": "Missing HSTS", "severity": "MEDIUM", "cwe": "CWE-523", "systemId": "hr.internal.example.com", "confidence": "high" } },
+    { "type": "request", "ts": 1741950001000, "data": { "url": "https://hr.internal.example.com/api/users", "method": "GET", "status": 200, "systemId": "hr.internal.example.com" } },
+    { "type": "ai", "ts": 1741950500000, "data": { "type": "system_profile", "targetSystem": "hr.internal.example.com", "model": "gemini-2.5-pro" } },
+    { "type": "test_artifact", "ts": 1741951000000, "data": { "testId": "test_143022_8821", "findingTitle": "JWT in localStorage", "verdict": "vulnerable", "output": "[R3D TEST] VULNERABLE: token valid — user=admin@example.com", "snippet": "(async()=>{ ... })()" } },
+    { "type": "imported_finding", "ts": 1741951500000, "data": { "source": "nuclei", "title": "CVE-2025-1234", "severity": "CRITICAL", "templateId": "CVE-2025-1234", "status": "confirmed" } }
   ],
   "summary": {
     "counters": { "findings": 42, "systems": 5, "requests": 312 },
@@ -125,8 +125,8 @@ R3D builds attack graphs from session data — directed graphs of systems, vulne
     "crownJewels": [{ "nodeId": "payroll.internal.example.com", "reasoning": "Contains compensation data, SSNs" }],
     "executiveSummary": "Stolen JWT from HR portal can pivot to payroll system via shared SSO."
   },
-  "builtAt": "2025-03-14T11:35:00Z",
-  "enrichedAt": "2025-03-14T11:35:30Z"
+  "builtAt": "2026-03-14T11:35:00Z",
+  "enrichedAt": "2026-03-14T11:35:30Z"
 }
 ```
 
@@ -135,6 +135,28 @@ That is a single document with nested arrays of heterogeneous nodes, typed edges
 What would the relational alternative look like? At minimum: a `graph_nodes` table (with a discriminator column for system vs. vulnerability vs. credential), a `graph_edges` table with two foreign keys, a `graph_paths` table with a junction table for ordered path members, an `enrichment_edges` table, an `enrichment_paths` table, an `enrichment_crown_jewels` table. Six to eight tables for one graph. And when the AI enrichment schema changes — when we add `lateralMovementPaths` or `dataExfiltrationRisk` — each new key is a migration.
 
 In MongoDB, the graph is one document. The enrichment is one nested object. The AI returns JSON, we store JSON, and we query JSON. Zero impedance mismatch.
+
+## Phishing and the filesystem escape hatch
+
+R3D's phishing site cloner is the feature that most clearly illustrates where MongoDB fits and where it does not.
+
+When an analyst clicks PHISH on a system card in the dashboard, the proxy fetches the target's login page using captured auth context (HttpOnly cookies, Authorization headers, User-Agent — all of it), parses the HTML with BeautifulSoup, crawls every sub-resource (CSS, JS, images, fonts), rewrites all URLs to point to locally cached copies, and injects a comprehensive credential capture script. The result is a pixel-perfect clone served at a clean victim-facing URL like `/p/a1b2c3d4/`.
+
+The capture script is a fixed template — no LLM generates any of the injection JavaScript. It hooks form submissions, password field blur events, fetch/XHR request bodies, and uses a MutationObserver to catch dynamically added login forms (React, Angular, Vue SPAs that render after page load). After any credential interaction, it takes a snapshot of `document.cookie` and scans localStorage/sessionStorage for keys containing `token`, `session`, `auth`, `jwt`. Everything beacons back to the proxy via `navigator.sendBeacon`, which fires even if the page navigates away during a form submission.
+
+This is the one place where MongoDB is deliberately absent from the persistence layer. The cloned assets — HTML, CSS, JavaScript, images, fonts — are binary files served from disk. Storing them in GridFS would add latency and complexity for no benefit. The metadata and captured credentials live in a Python dict (`state.phish_sites`) because phish sites are inherently ephemeral: they exist for the duration of a demo, and the interesting data (captured credentials) is broadcast in real-time via SSE the moment a victim enters anything. If the proxy restarts, the phish sites are gone, and that is fine.
+
+The architectural takeaway: MongoDB is not a religion. It is the right tool for session documents, attack graphs, encrypted credentials, and AI analysis artifacts — data that is richly structured, polymorphic, and needs to survive restarts. For ephemeral binary caches, the filesystem is simpler and faster. Using the right tool at each layer is not a compromise; it is the point.
+
+## Attack plans as living documents
+
+The AI attack planner generates multi-step plans that chain browser injection, server-side credential replay, and phishing clones across systems. The LLM returns a JSON plan with steps — each typed as `"browser"`, `"server"`, or `"phish"` — and the proxy executes them sequentially, resolving output placeholders between steps so earlier results feed into later ones.
+
+The `"phish"` step type is the most interesting from an architecture perspective. When the LLM says `"type": "phish"`, it only provides a target URL. The entire clone-inject-serve pipeline runs from a fixed server-side template. Zero LLM-generated JavaScript. Zero room for the model to hallucinate incorrect CSP relay usage, wrong endpoint URLs, or broken capture logic. The LLM decides *what* to phish; the template handles *how*.
+
+Plans live in-memory during execution. When complete, the execution results — per-step status, output, HTTP responses, and an AI-generated verdict — flow back into the session document as an `attack_plan_result` event via `$push`. The plan's verdict (CRITICAL, HIGH, MEDIUM, LOW, or INCONCLUSIVE) becomes part of the session's permanent record in MongoDB, alongside the findings that prompted the plan in the first place.
+
+This is the same pattern as everything else in R3D: the transient, operational state lives where it is cheapest (memory, filesystem), and the durable analytical artifacts land in MongoDB where they can be queried, reported on, and encrypted.
 
 ## Schema evolution at the speed of AI
 
@@ -297,23 +319,30 @@ There is no impedance mismatch at any boundary. The data never changes shape. It
 
 And with Atlas Vector Search available on the same deployment (R3D already runs on `mongodb/mongodb-atlas-local:8.0`, which ships with the `mongot` search engine), the natural next step is semantic search over findings. Imagine asking "show me all sessions where we found authentication bypass patterns similar to this one" and getting results ranked by vector similarity, not just keyword match. The database already supports it. No additional infrastructure, no external search service, no ETL pipeline.
 
-## Three collections, zero impedance
+## Seven collections and a filesystem, zero impedance
 
-R3D uses three MongoDB collections for all persistent state:
+R3D uses seven MongoDB collections for persistent state:
 
 | Collection | What it stores |
 |------------|----------------|
-| `r3d_sessions` | Session documents with embedded events, summaries, and metadata. The spillover collection `r3d_event_overflow` handles long-running sessions. |
+| `r3d_sessions` | Session documents with embedded events, summaries, and metadata. The companion `r3d_event_overflow` handles long-running sessions that exceed the embedded array threshold. |
+| `r3d_credentials` | CSFLE-encrypted auth contexts — cookies, headers, tokens captured by the extension. Encrypted client-side with AES-256-CBC before reaching the server. |
+| `r3d_attack_graphs` | Attack graph documents with nodes, edges, BFS-computed paths, AI enrichment, and credential pivot results. |
 | `r3d_specs` | Imported OpenAPI/Swagger specifications with extracted endpoints, sensitive flags, and coverage stats. |
-| `r3d_attack_graphs` | Attack graph documents with nodes, edges, BFS-computed paths, and AI enrichment. |
+| `r3d_users` | Multi-user authentication — usernames, bcrypt password hashes, roles (admin/operator/viewer). |
+| `r3d_audit_log` | Authentication events and administrative actions with timestamps for compliance trails. |
 
-Three collections. No junction tables. No foreign key constraints. No migration framework. Each collection stores self-contained documents that map directly to application-level objects. The session document is the session. The graph document is the graph. The spec document is the spec. There is no assembly step where you join five tables to reconstruct the object the application actually works with.
+Seven collections. No junction tables. No foreign key constraints. No migration framework. Each collection stores self-contained documents that map directly to application-level objects. The session document is the session. The graph document is the graph. The spec document is the spec. There is no assembly step where you join five tables to reconstruct the object the application actually works with.
+
+Not everything belongs in MongoDB, and R3D does not pretend otherwise. Phishing site clones — HTML pages with rewritten asset URLs and injected credential capture hooks — live on the filesystem at `phish_cache/{site_id}/` and are served directly by FastAPI. Binary assets (images, fonts, stylesheets) are better on disk than in GridFS. Phish sites are ephemeral by nature — they exist for the duration of a demo or engagement, and the captured credentials are exfiltrated in real-time via SSE, so persistence across restarts is unnecessary. Attack plans and active scan state live in Python dicts for the same reason. MongoDB handles the data that matters long-term; the rest uses whatever is simplest.
 
 ## One person, days not months
 
-R3D was built by a single developer in days. The Chrome extension, the proxy server, the MongoDB integration, the LLM routing, the attack graph engine, the scan/fuzz engine, the Burp/Nuclei integration, the SARIF export, the web dashboard, the Docker setup with auto-generated API keys — all of it.
+R3D was built by a single developer in days. The Chrome extension with 16 analysis modules, the FastAPI proxy with 17 route modules, the MongoDB integration with CSFLE, the LLM routing through LiteLLM, the attack graph engine with BFS pathfinding, the scan/fuzz engine with six payload libraries, the phishing site cloner with SPA-aware credential capture, the AI attack planner with credential pivots, the multi-user auth system with JWT and RBAC, the OPSEC profile engine, the Burp/Nuclei integration, the SARIF export, the OpenAPI spec importer, the PDF report generator, the web dashboard with SSE-powered live updates, the Docker setup with auto-generated API keys and CSFLE bootstrap — all of it.
 
 That is not a statement about heroics. It is a statement about what happens when your data layer does not fight you. The document model eliminated an entire category of engineering decisions. There was no schema design phase. No entity-relationship diagram. No migration framework to configure. No ORM to map between the application's natural objects and the database's tabular structure. The Python dictionaries in the application became BSON documents in the database. The JavaScript objects in the browser became JSON on the wire became documents at rest. The impedance mismatch was zero.
+
+When we added the phishing cloner, we added zero database tables — phish sites live on the filesystem and in memory. When we added the attack planner, plan execution results flowed into the existing session document via `$push` — no new collection, no migration. When we added multi-user auth, `r3d_users` and `r3d_audit_log` appeared as new collections with zero impact on existing data. When the credential pivot engine needed to store results, they merged into the existing attack graph document. Each feature shipped in hours, not sprints.
 
 A relational approach would have demanded a different kind of team. A DBA to design and maintain the schema. A backend engineer to write and test migrations. A discussion about whether to use an ORM or raw SQL. A decision about how to handle the polymorphic events (single-table inheritance? class-table inheritance? JSON columns?). Another decision about how to represent attack graphs (adjacency list? nested sets? recursive CTEs?). Each of these decisions is reasonable in isolation. Together, they add weeks and headcount to a project that should be about the analysis, not the plumbing.
 
@@ -321,4 +350,4 @@ The database got out of the way. We focused on catching vulnerabilities.
 
 ---
 
-*R3D is open-source offensive security intelligence. The source is available on [GitHub](https://github.com/oblivio/r3d-xtension).*
+*R3D is offensive security intelligence built on MongoDB. For the full source and setup instructions, see the [README](README.md).*

