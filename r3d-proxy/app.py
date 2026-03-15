@@ -25,6 +25,7 @@ from routers import (
     graphs,
     llm,
     opsec,
+    phish,
     plans,
     proofs,
     reports,
@@ -108,6 +109,7 @@ app.include_router(specs.router)
 app.include_router(tools.router)
 app.include_router(graphs.router)
 app.include_router(plans.router)
+app.include_router(phish.router)
 app.include_router(proofs.router)
 app.include_router(reports.router)
 app.include_router(webhooks.router)

