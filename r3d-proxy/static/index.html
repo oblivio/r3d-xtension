@@ -100,18 +100,29 @@ a:hover{text-decoration:underline}
 .validation-tip{font-size:10px;color:var(--txt-dim);font-style:italic;margin-top:2px}
 
 /* Test cards */
-.test-card{background:linear-gradient(180deg,rgba(17,18,29,.96),rgba(12,13,23,.99));border:1px solid rgba(105,240,174,.2);border-left:3px solid var(--green);border-radius:var(--r);padding:14px;margin-top:8px;margin-bottom:4px;transition:border-color .15s;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.test-card{background:linear-gradient(180deg,rgba(17,18,29,.96),rgba(12,13,23,.99));border:1px solid rgba(105,240,174,.2);border-left:3px solid var(--green);border-radius:var(--r);padding:0;margin-top:8px;margin-bottom:4px;transition:border-color .15s,opacity .2s;box-shadow:0 8px 24px rgba(0,0,0,.12);overflow:hidden;animation:fadeIn .25s}
 .test-card:hover{border-color:rgba(105,240,174,.35)}
-.test-card h4{font-size:11px;color:var(--green);font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.3px}
-.test-card .test-desc{font-size:12px;color:var(--txt);margin-bottom:10px;line-height:1.5}
+.test-card-header{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(105,240,174,.04);border-bottom:1px solid rgba(105,240,174,.1);position:sticky;top:0;z-index:1}
+.test-card-header h4{font-size:11px;color:var(--green);font-weight:700;margin:0;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0}
+.test-card-header .tc-actions{display:flex;gap:6px;align-items:center;margin-left:auto;flex-shrink:0}
+.test-card-body{padding:12px 14px}
+.test-card .test-desc{font-size:12px;color:var(--txt);margin-bottom:10px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.test-card .test-desc.expanded{-webkit-line-clamp:unset;display:block}
 .test-section{margin-bottom:10px}
 .test-section-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;align-items:center;gap:8px}
 .test-section-label.browser{color:var(--accent)}
 .test-section-label.curl{color:var(--orange)}
-.test-code{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px 12px;font-family:var(--mono);font-size:11px;white-space:pre-wrap;word-break:break-all;line-height:1.5;position:relative;max-height:200px;overflow-y:auto}
+.test-code{background:var(--bg);border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:11px;white-space:pre-wrap;word-break:break-all;line-height:1.5;position:relative;overflow:hidden;transition:max-height .3s ease,padding .3s ease}
+.test-code.tc-collapsed{max-height:0;padding:0 12px;border-color:transparent}
+.test-code.tc-expanded{max-height:300px;padding:10px 12px;overflow-y:auto}
 .test-code.browser-code{color:var(--accent)}
 .test-code.curl-code{color:var(--orange)}
-.test-expect{display:flex;gap:12px;margin-top:8px;font-size:11px}
+.tc-toggle{background:none;border:1px solid var(--border);color:var(--txt-dim);font-size:9px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono);transition:all .15s}
+.tc-toggle:hover{border-color:var(--accent);color:var(--accent)}
+.tc-dismiss{background:none;border:none;color:var(--txt-dim);font-size:14px;cursor:pointer;padding:0 4px;line-height:1;opacity:.6;transition:opacity .15s,color .15s}
+.tc-dismiss:hover{opacity:1;color:var(--red)}
+.test-expect{display:flex;gap:12px;margin-top:8px;font-size:11px;overflow:hidden;transition:max-height .25s ease;max-height:0}
+.test-expect.tc-visible{max-height:120px}
 .test-expect-vuln{color:var(--red);flex:1}
 .test-expect-safe{color:var(--green);flex:1}
 .test-expect strong{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px}
@@ -1496,32 +1507,64 @@ function renderTestCard(t,findingTitle){
   const testId='tid_'+Math.random().toString(36).slice(2,10);
   const snippet=t.browserSnippet||'';
   const snippetId='snip_'+Math.random().toString(36).slice(2,8);
+  const descId='desc_'+testId;
+  const expectId='expect_'+testId;
 
-  let html=`<div class="test-card" id="tc_${testId}"><h4>Exploit Test</h4>`;
-  html+=`<div class="test-desc">${esc(t.description||'')}</div>`;
+  let html=`<div class="test-card" id="tc_${testId}">`;
+  html+=`<div class="test-card-header">`;
+  html+=`<h4>Exploit Test</h4>`;
+  html+=`<div class="tc-actions">`;
+  if(snippet&&snippet!=='null'){
+    html+=`<button class="btn-test" data-finding-title="${esc(findingTitle||'')}" onclick="event.stopPropagation();runTestInBrowser(this,'${testId}',document.getElementById('${snippetId}').textContent,this.getAttribute('data-finding-title'))">Run in Browser</button>`;
+    html+=`<button class="btn-copy" onclick="event.stopPropagation();copyToClipboard(this,document.getElementById('${snippetId}').textContent)">Copy</button>`;
+  }
+  html+=`<button class="tc-dismiss" onclick="dismissTestCard(this)" title="Dismiss">&times;</button>`;
+  html+=`</div></div>`;
+
+  html+=`<div class="test-card-body">`;
+  html+=`<div class="test-desc" id="${descId}">${esc(t.description||'')}</div>`;
 
   if(t.expectedVulnerable||t.expectedSafe){
-    html+=`<div class="test-expect" style="margin-bottom:10px">`;
+    html+=`<div style="margin-bottom:8px"><button class="tc-toggle" onclick="toggleTestExpect(this,'${expectId}')">Expected Outcomes</button></div>`;
+    html+=`<div class="test-expect" id="${expectId}">`;
     if(t.expectedVulnerable)html+=`<div class="test-expect-vuln"><strong>If Vulnerable</strong>${esc(t.expectedVulnerable)}</div>`;
     if(t.expectedSafe)html+=`<div class="test-expect-safe"><strong>If Safe</strong>${esc(t.expectedSafe)}</div>`;
     html+=`</div>`;
   }
 
   if(snippet&&snippet!=='null'){
-    html+=`<div class="test-section">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-        <button class="btn-test" style="font-size:12px;padding:6px 18px" data-finding-title="${esc(findingTitle||'')}" onclick="event.stopPropagation();runTestInBrowser(this,'${testId}',document.getElementById('${snippetId}').textContent,this.getAttribute('data-finding-title'))">Run in Browser</button>
-        <button class="btn-copy" onclick="event.stopPropagation();copyToClipboard(this,document.getElementById('${snippetId}').textContent)">Copy</button>
-        <span style="font-size:9px;color:var(--txt-dim)">Injects into active tab via R3D extension</span>
-      </div>
-      <div class="test-code browser-code" id="${snippetId}" style="max-height:300px">${esc(snippet)}</div>
-    </div>`;
+    html+=`<div class="test-section">`;
+    html+=`<div style="margin-bottom:6px"><button class="tc-toggle" onclick="toggleTestCode(this,'${snippetId}')">Show Code</button></div>`;
+    html+=`<div class="test-code browser-code tc-collapsed" id="${snippetId}">${esc(snippet)}</div>`;
+    html+=`</div>`;
   }
 
   html+=`<div id="test-result-${testId}" class="test-result-area"></div>`;
-  html+=`</div>`;
+  html+=`</div></div>`;
   return html;
 }
+
+window.dismissTestCard=function(btn){
+  const card=btn.closest('.test-card');
+  if(card){card.style.opacity='0';setTimeout(()=>{card.style.display='none'},200)}
+};
+
+window.toggleTestCode=function(btn,snippetId){
+  const code=document.getElementById(snippetId);
+  if(!code)return;
+  const collapsed=code.classList.contains('tc-collapsed');
+  code.classList.toggle('tc-collapsed',!collapsed);
+  code.classList.toggle('tc-expanded',collapsed);
+  btn.textContent=collapsed?'Hide Code':'Show Code';
+};
+
+window.toggleTestExpect=function(btn,expectId){
+  const el=document.getElementById(expectId);
+  if(!el)return;
+  const visible=el.classList.contains('tc-visible');
+  el.classList.toggle('tc-visible',!visible);
+  btn.textContent=visible?'Expected Outcomes':'Hide Outcomes';
+};
 
 window.runTestInBrowser=async function(btn,testId,snippet,findingTitle,findingId){
   btn.classList.add('loading');btn.textContent='Injecting...';
