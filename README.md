@@ -1,5 +1,7 @@
 # R3D
 
+![MDB-R3D](mdb-r3d-2.png)
+
 Offensive security intelligence for internal web applications. Chrome extension + proxy server that intercepts live browser traffic, maps attack surfaces, generates and executes exploit tests against target pages, clones authenticated sites into credential-harvesting phish pages, replays stolen credentials server-side, runs AI-generated multi-step attack plans, tests lateral movement across systems, fuzzes endpoints with payload libraries, builds directed attack graphs with BFS pathfinding — and routes everything through LLMs for triage, system profiling, and attack chain analysis. All session data persists in MongoDB with client-side field-level encryption protecting captured credentials.
 
 Built for systems behind SSO, Okta, and corporate auth — where the browser is already authenticated and the work is proving what that access can reach.
