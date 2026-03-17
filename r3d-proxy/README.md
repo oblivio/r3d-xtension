@@ -93,6 +93,29 @@ All request/response schemas are auto-generated from Pydantic models. Once the s
 | GET | `/r3d/sessions` | List sessions (newest first, max 100) |
 | GET | `/r3d/sessions/{sid}` | Get single session with events |
 
+### Phishing & MFA Relay
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/r3d/attack/phish/clone` | Clone a page into a credential-harvesting phish site |
+| GET | `/r3d/attack/phish/sites` | List all active phish sites |
+| GET | `/r3d/attack/phish/{site_id}` | Get phish site detail including captures |
+| DELETE | `/r3d/attack/phish/{site_id}` | Delete a phish site |
+| POST | `/r3d/attack/phish/{site_id}/relay` | Enable/disable MFA-capable credential relay |
+| POST | `/r3d/attack/phish/suggest` | Score URLs for credential page likelihood |
+| POST | `/p/{site_id}/capture` | Victim-facing beacon endpoint (no auth) |
+| GET | `/p/{site_id}/{path}` | Serve cloned phish site files (no auth) |
+
+#### MFA Relay SSE Events
+
+| Event | Description |
+|-------|-------------|
+| `phish_relay_configured` | Relay armed or disarmed for a site |
+| `phish_relay_started` | Credential replay attempt initiated |
+| `phish_relay_mfa_needed` | MFA code required — waiting for victim |
+| `phish_relay_success` | Session hijacked — cookies stored in auth contexts |
+| `phish_relay_failed` | Relay failed (wrong credentials, blocked, etc.) |
+
 See `/docs` for full request body schemas, field types, and defaults.
 
 ### Health

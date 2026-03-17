@@ -124,9 +124,60 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--txt);font
 .header-present{color:var(--green)}.header-missing{color:var(--red)}
 
 /* ─── Action Bar ────────────────────────────────────────────────── */
-#action-bar{display:flex;gap:6px;padding:8px;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
+#action-bar{display:flex;flex-wrap:wrap;gap:6px;padding:8px;background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
+.btn-phish{flex:1;background:linear-gradient(135deg,rgba(255,23,68,.15),rgba(255,145,0,.08));border:1px solid var(--red);color:var(--red);padding:9px;border-radius:var(--r);font-size:11px;font-weight:700;cursor:pointer;text-align:center;font-family:var(--sans);transition:all .2s;text-transform:uppercase;letter-spacing:.3px}
+.btn-phish:hover{background:linear-gradient(135deg,rgba(255,23,68,.28),rgba(255,145,0,.15));box-shadow:0 0 16px rgba(255,23,68,.15)}
+.btn-phish:disabled{opacity:.6;cursor:not-allowed}
+.btn-phish.cloning{background:rgba(255,234,0,.1);border-color:var(--yellow);color:var(--yellow);animation:phishPulse 1s ease-in-out infinite}
+.btn-phish.live{background:rgba(105,240,174,.15);border-color:var(--green);color:var(--green)}
+.btn-phish.failed{background:rgba(255,145,0,.12);border-color:var(--orange);color:var(--orange)}
+@keyframes phishPulse{0%,100%{opacity:1}50%{opacity:.5}}
+.btn-scan-xss{flex:1;background:linear-gradient(135deg,rgba(255,234,0,.1),rgba(255,145,0,.06));border:1px solid var(--orange);color:var(--orange);padding:9px;border-radius:var(--r);font-size:10px;font-weight:700;cursor:pointer;text-align:center;font-family:var(--sans);transition:all .2s;text-transform:uppercase;letter-spacing:.3px}
+.btn-scan-xss:hover{background:linear-gradient(135deg,rgba(255,234,0,.2),rgba(255,145,0,.12));box-shadow:0 0 12px rgba(255,145,0,.12)}
+.btn-scan-xss:disabled{opacity:.6;cursor:not-allowed}
+.btn-scan-xss.scanning{background:rgba(255,234,0,.1);border-color:var(--yellow);color:var(--yellow);animation:phishPulse 1s ease-in-out infinite}
+.btn-scan-xss.found{background:rgba(255,23,68,.15);border-color:var(--red);color:var(--red)}
+.btn-scan-xss.clean{background:rgba(105,240,174,.15);border-color:var(--green);color:var(--green)}
+.btn-scan-xss.failed{background:rgba(255,145,0,.12);border-color:var(--orange);color:var(--orange)}
 .btn-dashboard{flex:1;background:linear-gradient(135deg,rgba(0,229,255,.12),rgba(179,136,255,.08));border:1px solid var(--accent);color:var(--accent);padding:9px;border-radius:var(--r);font-size:11px;font-weight:700;cursor:pointer;text-align:center;font-family:var(--sans);transition:all .2s}
 .btn-dashboard:hover{background:linear-gradient(135deg,rgba(0,229,255,.25),rgba(179,136,255,.15));box-shadow:0 0 16px rgba(0,229,255,.1)}
+
+/* ─── Phish Live Bar ───────────────────────────────────────────── */
+#phish-live-bar{display:flex;align-items:center;gap:6px;width:100%;padding:6px 8px;margin-top:4px;background:rgba(105,240,174,.08);border:1px solid var(--green);border-radius:var(--r);animation:fadeIn .3s}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.plb-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;animation:pulse 2s infinite}
+.plb-link{flex:1;font-size:10px;font-family:var(--mono);color:var(--green);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;font-weight:700}
+.plb-link:hover{text-decoration:underline;color:#fff}
+.plb-copy{background:rgba(105,240,174,.12);border:1px solid var(--green);color:var(--green);font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:var(--sans)}
+.plb-copy:hover{background:rgba(105,240,174,.25)}
+.plb-dismiss{background:none;border:none;color:var(--txt-dim);font-size:14px;cursor:pointer;padding:0 2px;line-height:1}
+.plb-dismiss:hover{color:var(--txt)}
+
+/* ─── Phish Tab ────────────────────────────────────────────────── */
+.phish-section-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-dim);padding:4px 2px 6px;font-family:var(--mono)}
+.phish-site-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:10px;margin-bottom:6px;position:relative}
+.phish-site-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--red);border-radius:var(--r) 0 0 var(--r)}
+.phish-card-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.phish-live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;animation:pulse 2s infinite}
+.phish-target{font-size:11px;font-weight:700;color:var(--txt-br);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.phish-card-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.phish-serve-url{font-size:9px;color:var(--accent);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.phish-serve-link{font-size:10px;color:var(--green);font-family:var(--mono);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-decoration:none;cursor:pointer;background:rgba(105,240,174,.06);padding:2px 6px;border-radius:3px;border:1px solid rgba(105,240,174,.2);transition:all .15s}
+.phish-serve-link:hover{color:#fff;background:rgba(105,240,174,.15);border-color:var(--green);text-decoration:underline}
+.phish-ago{font-size:9px;color:var(--txt-dim);font-family:var(--mono);flex-shrink:0;margin-left:6px}
+.phish-card-stats{margin-bottom:6px}
+.phish-captures{font-size:10px;color:var(--txt-dim);font-family:var(--mono);font-weight:700}
+.phish-captures.has-captures{color:var(--red);animation:pulse 2s infinite}
+.phish-card-actions{display:flex;gap:4px}
+.phish-card-actions .btn{font-size:9px;padding:3px 8px}
+.phish-action-delete{border-color:var(--red)!important;color:var(--red)!important}
+.phish-action-delete:hover{background:rgba(255,23,68,.15)!important}
+
+.phish-capture-item{display:flex;gap:8px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:10px;align-items:center}
+.phish-cap-type{font-weight:800;font-size:9px;text-transform:uppercase;color:var(--red);font-family:var(--mono);flex-shrink:0}
+.phish-cap-fields{color:var(--txt);flex:1}
+.phish-action-relay{border-color:var(--purple)!important;color:var(--purple)!important}
+.phish-action-relay:hover{background:rgba(179,136,255,.12)!important}
 
 /* ─── Shared ────────────────────────────────────────────────────── */
 .toolbar{display:flex;gap:6px}

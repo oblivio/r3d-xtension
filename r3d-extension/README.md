@@ -54,7 +54,9 @@ r3d-extension/
 │                             # scanning, framework detection, CSP violation relay
 ├── sidepanel/
 │   ├── sidepanel.html/css   # Primary UI: session controls, findings list,
-│   └── sidepanel.js         # AI chat, settings, session history
+│   └── sidepanel.js         # AI chat, settings, session history,
+│                             # "Phish This Page" + "Scan DOM XSS" action buttons,
+│                             # phish tab with relay toggle and capture feed
 ├── lib/                     # Shared analysis modules (loaded by service worker & panel)
 │   ├── severity.js          # Severity/confidence enums, finding factory, dedup
 │   ├── cwe-mapper.js        # CWE/OWASP classification
@@ -71,6 +73,8 @@ r3d-extension/
 │   ├── evidence-collector.js    # Evidence packaging for findings
 │   ├── policy-engine.js     # Custom security policy evaluation
 │   ├── advanced-detectors.js    # SSRF, open redirect, GraphQL, rate limit checks
+│   ├── dom-xss-scanner.js   # Active DOM XSS detection — source-to-sink tracing,
+│   │                         # reflection scanning, DOM clobbering, postMessage audit
 │   └── ai-client.js         # LLM client + SessionClient for proxy communication
 ├── icons/                   # Extension icons (16/48/128px)
 └── manifest.json            # Chrome MV3 manifest

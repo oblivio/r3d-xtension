@@ -7,6 +7,7 @@ test_log: dict = {}
 active_scans: dict[str, dict] = {}
 active_plans: dict = {}
 phish_sites: dict[str, dict] = {}
+relay_sessions: dict[str, dict] = {}
 webhooks: list[dict] = []
 
 extension_heartbeat: dict[str, Any] = {

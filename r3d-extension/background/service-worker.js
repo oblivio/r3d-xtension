@@ -164,6 +164,7 @@ const state = {
   pendingRequests: new Map(),
   activityLog: [],
   allowedDomains: [],
+  phishSites: [],
 };
 
 const MAX_ACTIVITY_LOG = 200;
@@ -392,6 +393,7 @@ function getStateSnapshot() {
     promptLabels: AIClient.getPromptLabels(),
     promptOverrides: AIClient.getPromptOverrides(),
     debuggerAttached: !!debuggerTabId,
+    phishSites: state.phishSites,
   };
 }
 
@@ -782,6 +784,182 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       sendResponse(result);
     });
+    return true;
+  }
+
+  // ─── Phish handlers ──────────────────────────────────────────────
+  if (message.type === 'r3d-phish-this-page') {
+    (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.url || tab.url.startsWith('chrome')) {
+          sendResponse({ ok: false, error: 'No valid tab URL' });
+          return;
+        }
+        const base = proxyBaseUrl();
+        if (!base) { sendResponse({ ok: false, error: 'Proxy not connected' }); return; }
+        const resp = await fetch(`${base}/r3d/attack/phish/clone`, {
+          method: 'POST',
+          headers: proxyAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ url: tab.url }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          sendResponse({ ok: false, error: data.error || 'Clone failed' });
+          return;
+        }
+        const site = {
+          siteId: data.siteId,
+          targetUrl: tab.url,
+          serveUrl: base + (data.serveUrl || `/p/${data.siteId}/`),
+          clonedAt: Date.now(),
+          captureCount: 0,
+          captures: [],
+        };
+        state.phishSites = state.phishSites.filter(s => s.siteId !== site.siteId);
+        state.phishSites.unshift(site);
+        logActivity('phish', `Phish cloned: ${tab.url}`, null);
+        broadcastUpdate();
+        sendResponse({ ok: true, site });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+  if (message.type === 'r3d-phish-list') {
+    (async () => {
+      try {
+        const base = proxyBaseUrl();
+        if (!base) { sendResponse({ ok: false, error: 'Proxy not connected' }); return; }
+        const resp = await fetch(`${base}/r3d/attack/phish/sites`, {
+          headers: proxyAuthHeaders(),
+        });
+        const data = await resp.json();
+        if (data.ok && Array.isArray(data.sites)) {
+          state.phishSites = data.sites.map(s => ({
+            siteId: s.siteId,
+            targetUrl: s.targetUrl,
+            serveUrl: base + (s.serveUrl || `/p/${s.siteId}/`),
+            clonedAt: s.clonedAt || Date.now(),
+            captureCount: s.captureCount || 0,
+            captures: s.captures || [],
+          }));
+          broadcastUpdate();
+        }
+        sendResponse({ ok: true, sites: state.phishSites });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+  if (message.type === 'r3d-phish-delete') {
+    (async () => {
+      try {
+        const base = proxyBaseUrl();
+        if (!base) { sendResponse({ ok: false, error: 'Proxy not connected' }); return; }
+        await fetch(`${base}/r3d/attack/phish/${message.siteId}`, {
+          method: 'DELETE',
+          headers: proxyAuthHeaders(),
+        });
+        state.phishSites = state.phishSites.filter(s => s.siteId !== message.siteId);
+        logActivity('phish', `Phish site deleted: ${message.siteId}`, null);
+        broadcastUpdate();
+        sendResponse({ ok: true });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+  if (message.type === 'r3d-phish-relay-toggle') {
+    (async () => {
+      try {
+        const base = proxyBaseUrl();
+        if (!base) { sendResponse({ ok: false, error: 'Proxy not connected' }); return; }
+        const resp = await fetch(`${base}/r3d/attack/phish/${message.siteId}/relay`, {
+          method: 'POST',
+          headers: proxyAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ enabled: message.enabled, loginUrl: message.loginUrl || '', mfaUrl: message.mfaUrl || '' }),
+        });
+        const data = await resp.json();
+        sendResponse(data);
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  // ─── DOM XSS Scanner ─────────────────────────────────────────────
+  if (message.type === 'r3d-dom-xss-scan') {
+    (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.url || tab.url.startsWith('chrome')) {
+          sendResponse({ ok: false, error: 'No valid tab to scan' });
+          return;
+        }
+
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['lib/dom-xss-scanner.js'],
+          });
+        } catch {}
+
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            if (typeof DOMXSSScanner !== 'undefined') return DOMXSSScanner.scan();
+            return { url: location.href, issues: [], error: 'Scanner not loaded' };
+          },
+        });
+
+        const scanResult = results?.[0]?.result || { issues: [] };
+        const issues = scanResult.issues || [];
+
+        let sysId = null;
+        try {
+          const hostname = new URL(tab.url).hostname;
+          const systems = systemRegistry.getSystems();
+          const match = systems.find(s => (s.domains || []).some(d => hostname.includes(d) || d.includes(hostname)));
+          if (match) sysId = match.id;
+        } catch {}
+
+        const sevMap = { CRITICAL: 'CRITICAL', HIGH: 'HIGH', MEDIUM: 'MEDIUM', LOW: 'LOW', INFO: 'INFO' };
+        const newFindings = [];
+
+        for (const issue of issues) {
+          if (issue.severity === 'INFO') continue;
+          const f = createFinding({
+            module: 'dom-xss',
+            severity: sevMap[issue.severity] || Severity.MEDIUM,
+            title: `DOM XSS: ${issue.type.replace(/-/g, ' ')}`,
+            detail: issue.evidence,
+            evidence: { type: issue.type, source: issue.source, sink: issue.sink, element: issue.element },
+            url: scanResult.url || tab.url,
+            recommendation: issue.recommendation,
+            confidence: issue.severity === 'CRITICAL' ? Confidence.HIGH : Confidence.MEDIUM,
+          });
+          newFindings.push(f);
+        }
+
+        if (newFindings.length > 0) {
+          newFindings.forEach(f => enrichFinding(f, null));
+          state.allFindings.push(...newFindings);
+          logActivity('scan', `DOM XSS scan: ${newFindings.length} issue(s) on ${scanResult.url || tab.url}`, sysId);
+          broadcastUpdate();
+        } else {
+          logActivity('scan', `DOM XSS scan: clean — ${scanResult.url || tab.url}`, sysId);
+        }
+
+        sendResponse({ ok: true, result: scanResult, findingsCreated: newFindings.length });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
     return true;
   }
 });
@@ -1175,6 +1353,7 @@ function clearAll() {
   session.aiEnabled = true;
   session.counters = { requests: 0, findings: 0, systems: 0, patterns: 0, aiAnalyses: 0 };
   session.summary = null;
+  state.phishSites = [];
   stopFlushTimer();
   persistSession();
   broadcastUpdate();
