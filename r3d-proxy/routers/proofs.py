@@ -2,11 +2,12 @@
 
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from core.auth import verify_api_key
-from core.replay import get_http_client, get_replay_headers
+from core.replay import get_http_client
+from core.vault import CredentialVault
 
 router = APIRouter(prefix="/r3d", tags=["proofs"])
 
@@ -45,10 +46,14 @@ SECURITY_HEADERS = [
 
 
 @router.get("/prove", dependencies=[Depends(verify_api_key)])
-async def prove(url: str, test: str = "headers", origin: str = ""):
-    """One-click proof page — fetches a target URL server-side and renders proof."""
+async def prove(url: str, test: str = "headers", origin: str = "", request: Request = None):
+    """One-click proof page — fetches a target URL server-side and renders proof.
+
+    Credentials are decrypted on-demand from CSFLE-encrypted storage.
+    """
     target = url
-    merged = get_replay_headers(origin or "", {})
+    vault: CredentialVault = request.app.state.credential_vault
+    merged = await vault.get_replay_headers(origin or "", {})
 
     try:
         async with get_http_client(timeout=12, follow_redirects=False) as c:

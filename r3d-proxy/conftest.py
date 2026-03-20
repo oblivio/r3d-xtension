@@ -156,6 +156,7 @@ def _build_test_app() -> Any:
     """
     from app import app
     from core.replay import load_payloads
+    from core.vault import CredentialVault
 
     load_payloads()
 
@@ -165,28 +166,34 @@ def _build_test_app() -> Any:
 
     app.router.lifespan_context = _noop_lifespan
 
+    creds_col = FakeCollection()
     app.state.sessions_col = FakeCollection()
     app.state.overflow_col = FakeCollection()
     app.state.specs_col = FakeCollection()
     app.state.graphs_col = FakeCollection()
-    app.state.credentials_col = FakeCollection()
+    app.state.credentials_col = creds_col
     app.state.users_col = FakeCollection()
     app.state.audit_col = FakeCollection()
     app.state.csfle_info = {"status": "disabled"}
+    app.state.credential_vault = CredentialVault(creds_col)
 
     return app
 
 
 @pytest.fixture()
 def test_app():
+    from core.vault import CredentialVault
+
     app = _build_test_app()
+    creds_col = FakeCollection()
     app.state.sessions_col = FakeCollection()
     app.state.overflow_col = FakeCollection()
     app.state.specs_col = FakeCollection()
     app.state.graphs_col = FakeCollection()
-    app.state.credentials_col = FakeCollection()
+    app.state.credentials_col = creds_col
     app.state.users_col = FakeCollection()
     app.state.audit_col = FakeCollection()
+    app.state.credential_vault = CredentialVault(creds_col)
     return app
 
 

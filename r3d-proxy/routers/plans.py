@@ -16,8 +16,9 @@ from core.auth import verify_api_key
 from core.config import DEFAULT_MODEL, now
 from core.db import get_sessions_col
 from core.opsec import throttle
-from core.replay import auth_contexts, get_http_client, get_replay_headers
+from core.replay import get_http_client
 from core.sse import broadcast
+from core.vault import CredentialVault
 from core import state
 
 router = APIRouter(prefix="/r3d/attack", tags=["plans"])
@@ -102,8 +103,14 @@ async def attack_pivot(sid: str, body: PivotRequest, request: Request):
     if not system_nodes:
         return {"ok": True, "results": [], "message": "No system nodes in graph"}
 
-    cred_origins = {origin: {k: v for k, v in ctx.items() if k != "ts"}
-                    for origin, ctx in auth_contexts.items() if ctx.get("cookies") or ctx.get("headers")}
+    vault: CredentialVault = request.app.state.credential_vault
+    origins_meta = await vault.list_origins()
+    cred_origins = {}
+    for meta in origins_meta:
+        if meta.get("hasCookies") or meta.get("headerKeys"):
+            ctx = await vault.get_context(meta["origin"])
+            cred_origins[meta["origin"]] = {k: v for k, v in ctx.items() if k != "ts"}
+
     if not cred_origins:
         return {"ok": True, "results": [], "message": "No captured credentials available"}
 
@@ -163,7 +170,7 @@ async def attack_pivot(sid: str, body: PivotRequest, request: Request):
             if not source_origin or not target_domain:
                 continue
 
-            replay_headers = get_replay_headers(source_origin, {})
+            replay_headers = await vault.get_replay_headers(source_origin, {})
             if not replay_headers:
                 results.append({"source": source_origin, "target": target_domain,
                                 "status": "skipped", "reason": "No credentials for source origin"})
@@ -247,9 +254,8 @@ async def generate_attack_plan(sid: str, body: PlanGenerateRequest, request: Req
 
     systems_list = [{"id": s["id"], "name": s["name"], "samplePaths": list(s["urls"])[:10]} for s in systems.values()]
 
-    cred_summary = [{"origin": o, "hasCookies": bool(c.get("cookies")),
-                      "headerKeys": list((c.get("headers") or {}).keys())}
-                     for o, c in auth_contexts.items() if c.get("cookies") or c.get("headers")]
+    vault: CredentialVault = request.app.state.credential_vault
+    cred_summary = await vault.list_origins()
 
     findings_summary = json.dumps([{
         "id": f.get("id", ""), "title": f.get("title", ""), "severity": f.get("severity", ""),
@@ -463,7 +469,8 @@ async def execute_attack_plan(sid: str, body: PlanExecuteRequest, request: Reque
                 except Exception:
                     phish_origin = ""
 
-                replay_headers = get_replay_headers(phish_origin, {})
+                vault: CredentialVault = request.app.state.credential_vault
+                replay_headers = await vault.get_replay_headers(phish_origin, {})
                 phish_site_id = uuid4().hex[:8]
                 cache_dir = PHISH_CACHE_ROOT / phish_site_id
                 assets_dir = cache_dir / "assets"
@@ -519,7 +526,7 @@ async def execute_attack_plan(sid: str, body: PlanExecuteRequest, request: Reque
                         origin = f"{p.scheme}://{p.netloc}"
                     except Exception:
                         origin = ""
-                    headers = get_replay_headers(origin, {}) if use_auth else {}
+                    headers = await vault.get_replay_headers(origin, {}) if use_auth else {}
                     try:
                         async with get_http_client(timeout=10, follow_redirects=True) as client:
                             resp = await client.request(method=probe_method, url=probe_url, headers=headers)
@@ -558,7 +565,7 @@ async def execute_attack_plan(sid: str, body: PlanExecuteRequest, request: Reque
                     fuzz_origin = f"{p.scheme}://{p.netloc}"
                 except Exception:
                     fuzz_origin = ""
-                base_headers = get_replay_headers(fuzz_origin, {}) if use_auth else {}
+                base_headers = await vault.get_replay_headers(fuzz_origin, {}) if use_auth else {}
 
                 baseline_body = ""
                 baseline_status = 0
@@ -618,7 +625,7 @@ async def execute_attack_plan(sid: str, body: PlanExecuteRequest, request: Reque
                     result["error"] = "pivotConfig requires sourceOrigin and targetDomain"
                     result["status"] = "error"
                 else:
-                    replay_headers = get_replay_headers(source_origin, {})
+                    replay_headers = await vault.get_replay_headers(source_origin, {})
                     pivot_results: list[dict] = []
                     for path in target_paths[:10]:
                         await throttle()
@@ -658,7 +665,7 @@ async def execute_attack_plan(sid: str, body: PlanExecuteRequest, request: Reque
                     except Exception:
                         pass
 
-                headers = get_replay_headers(origin_for_creds, {})
+                headers = await vault.get_replay_headers(origin_for_creds, {})
                 try:
                     async with get_http_client(timeout=12, follow_redirects=True) as client:
                         resp = await client.request(

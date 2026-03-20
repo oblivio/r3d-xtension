@@ -1,4 +1,9 @@
-"""Auth-context capture and credential replay helpers."""
+"""Payload loading and HTTP client helpers.
+
+Credential replay is handled by core.vault.CredentialVault (on-demand CSFLE
+decrypt). This module retains only payload management and the HTTP client
+factory — no credential state lives here.
+"""
 
 import json
 from pathlib import Path
@@ -6,8 +11,6 @@ from pathlib import Path
 import httpx
 
 from core.config import SSL_VERIFY
-
-auth_contexts: dict[str, dict] = {}
 
 payloads: dict[str, list[str]] = {}
 payload_meta: dict[str, dict] = {}
@@ -31,36 +34,25 @@ def load_payloads():
             pass
 
 
-def get_http_client(**kwargs) -> httpx.AsyncClient:
-    """Return an httpx client that respects the global SSL_VERIFY setting."""
+def get_http_client(stealth: bool = True, **kwargs) -> httpx.AsyncClient:
+    """Return an httpx client with optional stealth fingerprint randomization.
+
+    Args:
+        stealth: Enable TLS + HTTP/2 fingerprint randomization (default: True)
+        **kwargs: Additional httpx.AsyncClient parameters
+
+    When stealth=True:
+        - Randomizes TLS cipher suite ordering (evades JA3/JA4 detection)
+        - Normalizes HTTP header ordering to match browsers
+        - Enables HTTP/2 with browser-like SETTINGS frames
+        - Adds connection pooling limits to avoid "automated tool" patterns
+
+    When stealth=False:
+        - Uses default httpx behavior (for testing/debugging)
+    """
+    if stealth:
+        from core.stealth import create_stealth_client
+        return create_stealth_client(**kwargs)
+
     kwargs.setdefault("verify", SSL_VERIFY)
     return httpx.AsyncClient(**kwargs)
-
-
-def get_replay_headers(origin: str, extra_headers: dict | None = None) -> dict:
-    """Merge stored auth context headers with any request-specific headers.
-
-    If OPSEC UA rotation is enabled and no stored User-Agent exists,
-    a rotated UA is injected automatically.
-    """
-    from core.opsec import get_profile, get_user_agent, sanitize_outbound_headers
-
-    ctx = auth_contexts.get(origin, {})
-    h: dict[str, str] = {}
-    if ctx.get("cookies"):
-        h["Cookie"] = ctx["cookies"]
-    if ctx.get("userAgent"):
-        h["User-Agent"] = ctx["userAgent"]
-    for k, v in (ctx.get("headers") or {}).items():
-        if k.lower() not in ("host", "content-length", "content-type"):
-            h[k] = v
-    if extra_headers:
-        h.update(extra_headers)
-
-    profile = get_profile()
-    if "User-Agent" not in h:
-        rotated = get_user_agent(profile)
-        if rotated:
-            h["User-Agent"] = rotated
-
-    return sanitize_outbound_headers(h, profile)

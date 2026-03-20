@@ -394,7 +394,18 @@ function getStateSnapshot() {
     promptOverrides: AIClient.getPromptOverrides(),
     debuggerAttached: !!debuggerTabId,
     phishSites: state.phishSites,
+    testStatus: _activeTestStatus,
   };
+}
+
+// ─── Test pipeline state (shared with panels) ──────────────────────
+
+let _activeTestStatus = null;
+
+function _setTestStatus(status) {
+  _activeTestStatus = status;
+  broadcast({ type: 'test-status', status });
+  broadcastUpdate();
 }
 
 // ─── Side panel activation ──────────────────────────────────────────
@@ -962,6 +973,62 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   }
+
+  // ─── Test pipeline (side panel) ──────────────────────────────────
+  if (message.type === 'r3d-test-generate') {
+    (async () => {
+      const base = proxyBaseUrl();
+      if (!base) { sendResponse({ ok: false, error: 'Proxy not configured' }); return; }
+      _setTestStatus({ phase: 'generating', findingId: message.findingId || '', ts: Date.now() });
+      try {
+        const r = await fetch(`${base}/r3d/analyze`, {
+          method: 'POST',
+          headers: proxyAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ prompt: message.prompt }),
+        });
+        const data = await r.json();
+        if (data.error) {
+          _setTestStatus({ phase: 'error', error: data.error, findingId: message.findingId || '' });
+          sendResponse({ ok: false, error: data.error });
+        } else {
+          let parsed; try { parsed = JSON.parse(data.content); } catch {}
+          _setTestStatus({ phase: 'review', findingId: message.findingId || '', ts: Date.now() });
+          sendResponse({ ok: true, content: data.content, parsed });
+        }
+      } catch (e) {
+        _setTestStatus({ phase: 'error', error: e.message, findingId: message.findingId || '' });
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'r3d-test-run') {
+    (async () => {
+      const base = proxyBaseUrl();
+      if (!base) { sendResponse({ ok: false, error: 'Proxy not configured' }); return; }
+      _setTestStatus({ phase: 'queued', findingId: message.findingId || '', testId: message.testId || '', ts: Date.now() });
+      try {
+        const r = await fetch(`${base}/r3d/test/run`, {
+          method: 'POST',
+          headers: proxyAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            testId: message.testId,
+            snippet: message.snippet,
+            findingTitle: message.findingTitle || '',
+            findingId: message.findingId || '',
+            sessionId: message.sessionId || session.id || '',
+            targetOrigin: message.targetOrigin || '',
+          }),
+        });
+        const data = await r.json();
+        sendResponse(data);
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
 });
 
 // ─── Web request observation (session-gated) ────────────────────────
@@ -1360,8 +1427,12 @@ function clearAll() {
 }
 
 // ─── Test Execution Engine ────────────────────────────────────────────
-// Polls the proxy for pending tests and injects them into the active tab
-// via chrome.scripting.executeScript. Reports results back to the proxy.
+// Polls the proxy for pending tests and executes them on the target tab.
+//
+// Strategy: Uses chrome.debugger + CDP Runtime.evaluate to bypass page CSP
+// (which blocks new Function / eval on strict sites like LinkedIn, Google, etc).
+// Falls back to chrome.scripting.executeScript if the debugger can't attach
+// (e.g. DevTools already open, or chrome:// pages).
 
 let _testPollInterval = null;
 
@@ -1392,16 +1463,211 @@ async function pollPendingTests() {
 }
 
 async function findTargetTab(targetOrigin) {
+  const proxyOrigin = (() => {
+    try {
+      const ep = AIClient.getConfig().endpoint || '';
+      const idx = ep.indexOf('/v1/');
+      const base = idx !== -1 ? ep.substring(0, idx) : ep.replace(/\/+$/, '');
+      return base ? new URL(base).origin : '';
+    } catch { return ''; }
+  })();
+
+  function isDashboard(tab) {
+    if (!tab?.url) return false;
+    try {
+      const o = new URL(tab.url).origin;
+      return o === proxyOrigin || o === 'http://0.0.0.0:4000' || o === 'http://localhost:4000';
+    } catch { return false; }
+  }
+
+  // Search ALL windows for the target origin
   if (targetOrigin) {
-    const tabs = await chrome.tabs.query({ currentWindow: true });
-    for (const tab of tabs) {
+    const allTabs = await chrome.tabs.query({});
+    for (const tab of allTabs) {
       try {
         if (tab.url && new URL(tab.url).origin === targetOrigin) return tab;
       } catch {}
     }
   }
-  const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return active || null;
+
+  // Fallback: most recently active non-dashboard, non-extension tab
+  const allTabs = await chrome.tabs.query({ lastFocusedWindow: true });
+  const candidates = allTabs
+    .filter(t => t.url && !isDashboard(t) && !t.url.startsWith('chrome') && !t.url.startsWith('about:'))
+    .sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0));
+  if (candidates.length) return candidates[0];
+
+  // Last resort: any non-dashboard tab across all windows
+  const everywhere = await chrome.tabs.query({});
+  const any = everywhere.find(t => t.url && !isDashboard(t) && !t.url.startsWith('chrome'));
+  return any || null;
+}
+
+// Wrap the test snippet with console capture and __r3d_proxy fallback.
+// Returns an expression string that resolves to { output, error }.
+// CRITICAL: snippets are async IIFEs like (async()=>{...})(). We MUST
+// await them or the wrapper returns before network calls finish.
+function _wrapSnippet(snippet) {
+  return `(async () => {
+    const __r3d_output = [];
+    const __origLog = console.log;
+    console.log = function(...args) {
+      const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+      if (msg.includes('[R3D TEST]')) __r3d_output.push(msg);
+      __origLog.apply(console, args);
+    };
+
+    {
+      let _seq = 0;
+      window.__r3d_proxy = function(endpoint, body) {
+        const id = '__r3d_relay_' + (++_seq) + '_' + Date.now();
+        return new Promise((resolve, reject) => {
+          let settled = false;
+          const timeout = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener('__r3d_relay_response', handler);
+            reject(new Error('R3D proxy relay timeout (15s) — is the extension loaded?'));
+          }, 15000);
+          function handler(e) {
+            if (settled) return;
+            if (e.detail && e.detail._relayId === id) {
+              settled = true;
+              clearTimeout(timeout);
+              window.removeEventListener('__r3d_relay_response', handler);
+              if (e.detail.error) reject(new Error(e.detail.error));
+              else resolve(e.detail.data);
+            }
+          }
+          window.addEventListener('__r3d_relay_response', handler);
+          window.dispatchEvent(new CustomEvent('__r3d_relay_request', {
+            detail: { _relayId: id, endpoint, body }
+          }));
+        });
+      };
+    }
+
+    try {
+      await (${snippet});
+    } catch(e) {
+      __r3d_output.push('[R3D TEST] ERROR: ' + e.message);
+    }
+    await new Promise(r => setTimeout(r, 1000));
+    console.log = __origLog;
+    return { output: __r3d_output.join('\\n'), error: null };
+  })()`;
+}
+
+// Execute snippet via CDP Runtime.evaluate (bypasses page CSP entirely).
+async function _executeViaCDP(tabId, snippet) {
+  const weAttached = debuggerTabId !== tabId;
+  if (weAttached) {
+    await new Promise((resolve, reject) => {
+      chrome.debugger.attach({ tabId }, '1.3', () => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve();
+      });
+    });
+  }
+
+  try {
+    const evalResult = await new Promise((resolve, reject) => {
+      chrome.debugger.sendCommand(
+        { tabId },
+        'Runtime.evaluate',
+        {
+          expression: _wrapSnippet(snippet),
+          awaitPromise: true,
+          returnByValue: true,
+          timeout: 30000,
+        },
+        (result) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve(result);
+        }
+      );
+    });
+
+    if (evalResult.exceptionDetails) {
+      const msg = evalResult.exceptionDetails.text ||
+                  evalResult.exceptionDetails.exception?.description ||
+                  'Unknown CDP evaluation error';
+      return { output: `[R3D TEST] ERROR: ${msg}`, error: null };
+    }
+
+    return evalResult.result?.value || { output: '', error: 'No result from CDP' };
+  } finally {
+    if (weAttached) {
+      try { chrome.debugger.detach({ tabId }); } catch {}
+    }
+  }
+}
+
+// Fallback: executeScript + new Function (works on pages without strict CSP).
+async function _executeViaScripting(tabId, snippet) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content/content.js'],
+    });
+  } catch {}
+
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: async (code) => {
+      const output = [];
+      const origLog = console.log;
+      console.log = function(...args) {
+        const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+        if (msg.includes('[R3D TEST]')) output.push(msg);
+        origLog.apply(console, args);
+      };
+
+      {
+        let _seq = 0;
+        window.__r3d_proxy = function(endpoint, body) {
+          const id = '__r3d_relay_' + (++_seq) + '_' + Date.now();
+          return new Promise((resolve, reject) => {
+            let settled = false;
+            const timeout = setTimeout(() => {
+              if (settled) return;
+              settled = true;
+              window.removeEventListener('__r3d_relay_response', handler);
+              reject(new Error('R3D proxy relay timeout (15s) — is the extension loaded?'));
+            }, 15000);
+            function handler(e) {
+              if (settled) return;
+              if (e.detail && e.detail._relayId === id) {
+                settled = true;
+                clearTimeout(timeout);
+                window.removeEventListener('__r3d_relay_response', handler);
+                if (e.detail.error) reject(new Error(e.detail.error));
+                else resolve(e.detail.data);
+              }
+            }
+            window.addEventListener('__r3d_relay_response', handler);
+            window.dispatchEvent(new CustomEvent('__r3d_relay_request', {
+              detail: { _relayId: id, endpoint, body }
+            }));
+          });
+        };
+      }
+
+      try {
+        const fn = new Function(`return (async () => { return await (${code}); })();`);
+        await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error('Test execution timeout (15s)')), 15000))]);
+      } catch(e) {
+        output.push('[R3D TEST] ERROR: ' + e.message);
+      }
+      await new Promise(r => setTimeout(r, 1000));
+      console.log = origLog;
+      return { output: output.join('\n'), error: null };
+    },
+    args: [snippet],
+    world: 'MAIN',
+  });
+
+  return results?.[0]?.result || { output: '(no output)', error: null };
 }
 
 async function executeTestOnActiveTab(test) {
@@ -1412,6 +1678,7 @@ async function executeTestOnActiveTab(test) {
   try {
     const tab = await findTargetTab(targetOrigin);
     if (!tab?.id) {
+      _setTestStatus({ phase: 'error', testId, error: 'No matching tab found' });
       await reportTestResultEx(base, testId, false, '', 'No matching tab found' + (targetOrigin ? ` for ${targetOrigin}` : ''), '', null);
       return;
     }
@@ -1423,79 +1690,60 @@ async function executeTestOnActiveTab(test) {
       logActivity('test', `Target mismatch: wanted ${targetOrigin}, got ${executedOrigin}. Running anyway.`, null);
     }
 
-    const proxyBase = base;
-    const proxyKey = AIClient.getConfig().apiKey || '';
+    _setTestStatus({ phase: 'executing', testId, executedOn: executedOrigin, tabId: tab.id, ts: Date.now() });
 
+    // Notify proxy that execution has started
+    try {
+      await fetch(`${base}/r3d/test/executing`, {
+        method: 'POST',
+        headers: proxyAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ testId, tabId: tab.id, executedOn: executedOrigin }),
+      });
+    } catch {}
+
+    // Ensure content scripts are loaded (for __r3d_proxy relay bridge)
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         files: ['content/content.js'],
       });
-    } catch (_injectErr) {}
+    } catch {}
 
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: async (snippet, _proxyBase, _proxyKey) => {
-        const output = [];
-        const origLog = console.log;
-        console.log = function(...args) {
-          const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-          if (msg.includes('[R3D TEST]')) output.push(msg);
-          origLog.apply(console, args);
-        };
+    let result;
+    try {
+      result = await _executeViaCDP(tab.id, test.snippet);
+      logActivity('test', `CDP execution on ${executedOrigin}`, null);
+    } catch (cdpErr) {
+      logActivity('test', `CDP unavailable (${cdpErr.message}), falling back to executeScript`, null);
+      result = await _executeViaScripting(tab.id, test.snippet);
+    }
 
-        if (typeof window.__r3d_proxy !== 'function') {
-          let _seq = 0;
-          window.__r3d_proxy = function(endpoint, body) {
-            const id = '__r3d_relay_' + (++_seq) + '_' + Date.now();
-            return new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => {
-                window.removeEventListener('__r3d_relay_response', handler);
-                reject(new Error('R3D proxy relay timeout (10s)'));
-              }, 10000);
-              function handler(e) {
-                if (e.detail && e.detail._relayId === id) {
-                  clearTimeout(timeout);
-                  window.removeEventListener('__r3d_relay_response', handler);
-                  if (e.detail.error) reject(new Error(e.detail.error));
-                  else resolve(e.detail.data);
-                }
-              }
-              window.addEventListener('__r3d_relay_response', handler);
-              window.dispatchEvent(new CustomEvent('__r3d_relay_request', {
-                detail: { _relayId: id, endpoint, body }
-              }));
-            });
-          };
-        }
-
-        try {
-          const fn = new Function(`return (async () => { ${snippet} })();`);
-          await Promise.race([
-            fn(),
-            new Promise(r => setTimeout(r, 10000)),
-          ]);
-        } catch(e) {
-          output.push('[R3D TEST] ERROR: ' + e.message);
-        }
-        await new Promise(r => setTimeout(r, 500));
-        console.log = origLog;
-        return { output: output.join('\n'), error: null };
-      },
-      args: [test.snippet, proxyBase, proxyKey],
-      world: 'MAIN',
-    });
-
-    const result = results?.[0]?.result;
     const outputStr = result?.output || '(no output captured)';
     const hasVuln = outputStr.includes('VULNERABLE');
     const hasSafe = outputStr.includes('SAFE');
+
+    // Stream individual output lines to proxy for real-time dashboard updates
+    if (outputStr && base) {
+      for (const line of outputStr.split('\n').filter(Boolean)) {
+        try {
+          await fetch(`${base}/r3d/test/output`, {
+            method: 'POST',
+            headers: proxyAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ testId, line }),
+          });
+        } catch {}
+      }
+    }
+
+    const verdict = hasVuln ? 'vulnerable' : hasSafe ? 'safe' : 'inconclusive';
+    _setTestStatus({ phase: 'verdict', testId, verdict, output: outputStr, ts: Date.now() });
 
     await reportTestResultEx(base, testId, true, outputStr, result?.error || null, executedOrigin, tab.id);
     logActivity('test', `Test executed: ${test.findingTitle || testId} → ${hasVuln ? 'VULNERABLE' : hasSafe ? 'SAFE' : 'executed'} on ${executedOrigin}`, null);
     broadcastUpdate();
 
   } catch (err) {
+    _setTestStatus({ phase: 'error', testId, error: err.message });
     await reportTestResultEx(base, testId, false, '', err.message, '', null);
   }
 }
@@ -1510,8 +1758,6 @@ async function reportTestResultEx(base, testId, success, output, error, executed
     });
   } catch {}
 }
-
-// Legacy wrapper removed — all callers use reportTestResultEx
 
 function startTestPoller() {
   if (_testPollInterval) return;

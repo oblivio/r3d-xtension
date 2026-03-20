@@ -27,6 +27,17 @@ class TestRunRequest(BaseModel):
     testId: str | None = None
 
 
+class TestExecutingRequest(BaseModel):
+    testId: str
+    tabId: int | None = None
+    executedOn: str = ""
+
+
+class TestOutputRequest(BaseModel):
+    testId: str
+    line: str
+
+
 class TestResultRequest(BaseModel):
     testId: str
     success: bool
@@ -69,6 +80,33 @@ async def get_pending_tests():
         if t["testId"] in state.test_log:
             state.test_log[t["testId"]]["status"] = "dispatched"
     return tests
+
+
+@router.post("/test/executing", dependencies=[Depends(verify_api_key)])
+async def report_test_executing(body: TestExecutingRequest):
+    """Extension reports that it has picked up a test and is now executing it."""
+    data = {
+        "testId": body.testId,
+        "tabId": body.tabId,
+        "executedOn": body.executedOn,
+        "ts": now().isoformat(),
+    }
+    if body.testId in state.test_log:
+        state.test_log[body.testId]["status"] = "executing"
+    broadcast("test_executing", data)
+    return {"ok": True}
+
+
+@router.post("/test/output", dependencies=[Depends(verify_api_key)])
+async def report_test_output(body: TestOutputRequest):
+    """Extension streams individual console lines as the test runs."""
+    data = {
+        "testId": body.testId,
+        "line": body.line[:2000],
+        "ts": now().isoformat(),
+    }
+    broadcast("test_output", data)
+    return {"ok": True}
 
 
 @router.post("/test/result", dependencies=[Depends(verify_api_key)])

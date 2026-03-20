@@ -1,16 +1,20 @@
 """Dashboard, health, SSE stream, extension heartbeat, and handshake."""
 
 import asyncio
+import os
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 
-from core.auth import verify_api_key
+from core.audit import audit_log
+from core.auth import create_access_token, verify_api_key
 from core.config import DEFAULT_MODEL, R3D_API_KEY, now
 from core.db import serialize_dates
+from core.security_monitor import track_event
 from core.sse import broadcast, subscribers
 from core import state
 
@@ -26,6 +30,57 @@ class ExtensionHeartbeat(BaseModel):
     sessionState: str | None = None
     pendingEvents: int = 0
     counters: dict = {}
+
+
+class HandshakeRequest(BaseModel):
+    extensionId: str
+
+
+# ─── Handshake Security ──────────────────────────────────────────────
+
+# Rate limiting state: {ip: [(timestamp, timestamp, ...)]}
+_handshake_attempts: dict[str, list[float]] = defaultdict(list)
+_HANDSHAKE_RATE_LIMIT = 5  # Max attempts per minute
+_HANDSHAKE_WINDOW = 60  # seconds
+
+
+def _rate_limit_handshake(ip: str):
+    """Enforce sliding window rate limit for handshake attempts.
+
+    Allows max 5 attempts per minute per IP address. This prevents
+    credential harvesting via brute-force handshake abuse.
+    """
+    now_ts = datetime.now(timezone.utc).timestamp()
+    attempts = _handshake_attempts[ip]
+
+    # Remove expired attempts (older than 1 minute)
+    _handshake_attempts[ip] = [ts for ts in attempts if now_ts - ts < _HANDSHAKE_WINDOW]
+
+    if len(_handshake_attempts[ip]) >= _HANDSHAKE_RATE_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Max {_HANDSHAKE_RATE_LIMIT} handshake attempts per minute.",
+        )
+
+    _handshake_attempts[ip].append(now_ts)
+
+
+def _validate_extension_id(extension_id: str):
+    """Validate extension ID against allowlist.
+
+    In production, set R3D_ALLOWED_EXTENSION_IDS to your published extension ID.
+    Development accepts "*" wildcard.
+    """
+    allowed_ids = os.environ.get("R3D_ALLOWED_EXTENSION_IDS", "*")
+    if allowed_ids == "*":
+        return  # Development mode
+
+    allowed_list = [e.strip() for e in allowed_ids.split(",")]
+    if extension_id not in allowed_list:
+        raise HTTPException(
+            status_code=403,
+            detail="Extension ID not authorized. Contact administrator to whitelist your extension.",
+        )
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────
@@ -55,6 +110,23 @@ def _dashboard_build() -> str:
 
 @router.get("/health")
 async def health(request: Request):
+    """Health check endpoint.
+
+    Unauthenticated requests only receive minimal status info. Authenticated
+    requests receive full system details including MongoDB, CSFLE, and model config.
+
+    This prevents information disclosure to potential attackers probing the system.
+    """
+    # Try to verify API key without raising on failure
+    try:
+        await verify_api_key(request)
+        authenticated = True
+    except Exception:
+        authenticated = False
+
+    if not authenticated:
+        return {"status": "ok"}
+
     return {
         "status": "ok",
         "version": "5.3.0",
@@ -145,8 +217,16 @@ async def dashboard_bootstrap(request: Request):
 
 
 @router.get("/r3d/dashboard/version")
-async def dashboard_version():
-    """Expose the current dashboard build so stale browser caches can self-correct."""
+async def dashboard_version(request: Request):
+    """Expose dashboard version and build info (authenticated only).
+
+    Prevents version disclosure to unauthenticated attackers.
+    """
+    try:
+        await verify_api_key(request)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     return {"build": _dashboard_build(), "version": "5.3.0"}
 
 
@@ -160,6 +240,13 @@ async def extension_heartbeat(body: ExtensionHeartbeat):
     state.extension_heartbeat["pendingEvents"] = body.pendingEvents
     state.extension_heartbeat["counters"] = body.counters
     return {"ok": True}
+
+
+@router.get("/r3d/security/metrics", dependencies=[Depends(verify_api_key)])
+async def security_metrics():
+    """Internal security metrics (authenticated only, not exposed externally)."""
+    from core.security_monitor import get_security_metrics
+    return get_security_metrics()
 
 
 @router.get("/r3d/extension/status", dependencies=[Depends(verify_api_key)])
@@ -182,21 +269,75 @@ async def extension_status():
 _LOCALHOST_ADDRS = {"127.0.0.1", "::1", "localhost", "0.0.0.0"}
 
 
-@router.get("/r3d/handshake")
-async def handshake(request: Request):
-    """Auto-discovery endpoint for the Chrome extension.
+@router.post("/r3d/handshake")
+async def handshake(body: HandshakeRequest, request: Request):
+    """Secure extension handshake — mints short-lived JWT tokens.
 
-    Restricted to localhost connections only — remote clients receive
-    a 403 instead of the API key.
+    Security measures:
+      1. POST-only (prevents CSRF)
+      2. Extension ID validation (pinned to published extension ID in production)
+      3. Rate limiting (5 attempts per minute per IP)
+      4. Audit logging (all attempts, success + failure)
+      5. JWT minting (24h expiry, never transmits master API key)
+      6. Localhost-only (prevents remote exploitation)
+
+    The extension must send its chrome.runtime.id for validation. In production,
+    set R3D_ALLOWED_EXTENSION_IDS to your published extension ID to prevent
+    sideloaded/rogue extensions from obtaining credentials.
+
+    Returns a short-lived JWT token instead of the master R3D_API_KEY. This
+    limits the blast radius of a compromised token and enables revocation.
     """
     client_host = request.client.host if request.client else ""
+
+    # Security monitoring
+    track_event("handshake_attempt", ip=client_host, detail={"extensionId": body.extensionId})
+
+    # Localhost-only enforcement
     if client_host not in _LOCALHOST_ADDRS:
-        from fastapi import HTTPException
+        track_event("handshake_denied", ip=client_host, detail={"reason": "non_localhost"})
+        await audit_log(request, "handshake_denied", "localhost_check_failed", {
+            "extensionId": body.extensionId,
+            "reason": "non_localhost_connection",
+        })
         raise HTTPException(status_code=403, detail="Handshake only available from localhost")
+
+    # Rate limiting
+    try:
+        _rate_limit_handshake(client_host)
+    except HTTPException as e:
+        track_event("rate_limit_hit", ip=client_host, detail={"endpoint": "handshake"})
+        await audit_log(request, "handshake_denied", "rate_limit_exceeded", {
+            "extensionId": body.extensionId,
+        })
+        raise e
+
+    # Extension ID validation
+    try:
+        _validate_extension_id(body.extensionId)
+    except HTTPException as e:
+        track_event("handshake_denied", ip=client_host, detail={"reason": "invalid_extension_id"})
+        await audit_log(request, "handshake_denied", "extension_id_rejected", {
+            "extensionId": body.extensionId,
+        })
+        raise e
+
+    # Mint short-lived JWT (24 hours)
+    token = create_access_token(
+        user_id="extension",
+        username="extension",
+        role="operator",
+        expires_minutes=1440,  # 24 hours
+    )
+
+    await audit_log(request, "handshake_success", "token_issued", {
+        "extensionId": body.extensionId,
+        "tokenExpiry": "24h",
+    })
 
     return {
         "ok": True,
-        "apiKey": R3D_API_KEY,
+        "token": token,
         "endpoint": "/v1/chat/completions",
         "version": "5.3.0",
         "mongodb": "connected" if request.app.state.sessions_col is not None else "not configured",
@@ -266,6 +407,11 @@ document.getElementById('form').onsubmit=async e=>{
 
 @router.get("/")
 async def root():
+    """Serve dashboard with session JWT cookie (not master API key).
+
+    Issues a short-lived JWT token for dashboard authentication. The master
+    R3D_API_KEY never leaves the server.
+    """
     html_path = _DASHBOARD_HTML_PATH
     if html_path.exists():
         content = html_path.read_text().replace("__R3D_DASHBOARD_BUILD__", _dashboard_build())
@@ -273,13 +419,22 @@ async def root():
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+
+        # Mint a session JWT instead of transmitting the master API key
         if R3D_API_KEY:
+            session_token = create_access_token(
+                user_id="dashboard",
+                username="dashboard",
+                role="operator",
+                expires_minutes=60,  # 1 hour for dashboard sessions
+            )
             response.set_cookie(
                 key="r3d_session",
-                value=R3D_API_KEY,
+                value=session_token,
                 httponly=True,
                 samesite="strict",
                 path="/",
+                max_age=3600,  # 1 hour
             )
         return response
     return RedirectResponse(url="/static/index.html")

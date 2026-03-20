@@ -179,25 +179,22 @@
       const detail = e.detail || {};
       const relayId = detail._relayId;
       if (!relayId) return;
-      if (!_alive()) {
-        window.dispatchEvent(new CustomEvent('__r3d_relay_response', {
-          detail: { _relayId: relayId, error: 'Extension context invalidated — reload the extension' }
-        }));
-        return;
-      }
+      // If this content script instance has lost its extension context (e.g.
+      // extension was reloaded), stay silent so a freshly-injected instance
+      // can handle the request instead of racing with an immediate error.
+      if (!_alive()) return;
       try {
         chrome.runtime.sendMessage(
           { type: 'r3d-proxy-relay', endpoint: detail.endpoint, body: detail.body },
           (response) => {
+            if (chrome.runtime.lastError) return;
             window.dispatchEvent(new CustomEvent('__r3d_relay_response', {
               detail: { _relayId: relayId, ...(response || { error: 'No response from service worker' }) }
             }));
           }
         );
-      } catch (err) {
-        window.dispatchEvent(new CustomEvent('__r3d_relay_response', {
-          detail: { _relayId: relayId, error: 'Extension context lost: ' + err.message }
-        }));
+      } catch {
+        // Context lost mid-call -- stay silent, let another instance handle it
       }
     });
   }

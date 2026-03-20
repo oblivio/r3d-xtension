@@ -14,10 +14,22 @@ from core.config import R3D_API_KEY
 
 # ─── JWT Configuration ───────────────────────────────────────────────
 
-JWT_SECRET = os.environ.get("R3D_JWT_SECRET", "") or secrets.token_urlsafe(48)
 JWT_ALGORITHM = "HS256"
 JWT_ACCESS_EXPIRE_MINUTES = 60
 JWT_REFRESH_EXPIRE_DAYS = 7
+
+# Dynamic JWT secret with automatic rotation support
+def _get_jwt_secret() -> str:
+    """Get JWT secret with optional rotation support."""
+    static_secret = os.environ.get("R3D_JWT_SECRET", "")
+    if static_secret:
+        return static_secret  # Use static secret if provided (legacy mode)
+
+    # Use automatic rotation
+    from core.rotation import get_current_secret
+    return get_current_secret()
+
+JWT_SECRET = _get_jwt_secret()
 
 # ─── User Model ──────────────────────────────────────────────────────
 
@@ -50,15 +62,31 @@ def verify_password(password: str, hashed: str) -> bool:
 # ─── JWT Helpers ─────────────────────────────────────────────────────
 
 
-def create_access_token(user_id: str, username: str, role: str) -> str:
+def create_access_token(user_id: str, username: str, role: str, expires_minutes: int | None = None, scope: str | None = None) -> str:
+    """Create a JWT access token with optional custom expiry.
+
+    Args:
+        user_id: User identifier
+        username: Username for audit logging
+        role: User role (admin, operator, viewer)
+        expires_minutes: Custom expiry in minutes (default: JWT_ACCESS_EXPIRE_MINUTES)
+
+    Returns:
+        Encoded JWT token string
+    """
     payload = {
         "sub": user_id,
         "username": username,
         "role": role,
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_EXPIRE_MINUTES),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=expires_minutes or JWT_ACCESS_EXPIRE_MINUTES),
         "type": "access",
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    if scope:
+        payload["scope"] = scope
+
+    # Use dynamic secret (supports rotation)
+    secret = _get_jwt_secret()
+    return jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
 
 
 def create_refresh_token(user_id: str) -> str:
@@ -71,7 +99,14 @@ def create_refresh_token(user_id: str) -> str:
 
 
 def decode_token(token: str) -> dict:
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    """Decode JWT token with automatic rotation support."""
+    if os.environ.get("R3D_JWT_SECRET"):
+        # Static secret mode
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+
+    # Rotation mode - try current and previous secrets
+    from core.rotation import verify_token_with_rotation
+    return verify_token_with_rotation(token, JWT_ALGORITHM)
 
 
 # ─── Auth Dependencies ───────────────────────────────────────────────
@@ -89,10 +124,26 @@ async def verify_api_key(request: Request):
     if R3D_API_KEY and auth_header == f"Bearer {R3D_API_KEY}":
         return
 
-    # 2. API key via httpOnly cookie
+    # 2. API key via httpOnly cookie (legacy)
     cookie = request.cookies.get("r3d_session", "")
     if R3D_API_KEY and cookie == R3D_API_KEY:
         return
+
+    # 2b. JWT via r3d_session cookie (dashboard mints session JWTs here)
+    if cookie:
+        try:
+            payload = decode_token(cookie)
+            if payload.get("type") == "access":
+                request.state.user = {
+                    "_id": payload["sub"],
+                    "username": payload["username"],
+                    "role": payload["role"],
+                }
+                return
+        except jwt.ExpiredSignatureError:
+            pass
+        except jwt.InvalidTokenError:
+            pass
 
     # 3. JWT via Bearer header
     if auth_header.startswith("Bearer "):

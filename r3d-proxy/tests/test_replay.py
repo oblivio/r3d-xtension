@@ -1,19 +1,17 @@
-"""Tests for core/replay — payload loading and header merging."""
+"""Tests for core/replay (payloads) and core/vault (CredentialVault)."""
 
 import json
-import os
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from core.replay import (
-    auth_contexts,
-    get_replay_headers,
     load_payloads,
     payload_meta,
     payloads,
 )
+from core.vault import CredentialVault
 
 
 # ── load_payloads ────────────────────────────────────────────────────
@@ -86,57 +84,164 @@ def _do_load(payload_dir: Path):
             pass
 
 
-# ── get_replay_headers ───────────────────────────────────────────────
+# ── CredentialVault (on-demand decrypt, no in-memory cache) ──────────
 
 
-class TestGetReplayHeaders:
-    @pytest.fixture(autouse=True)
-    def _clean(self):
-        auth_contexts.clear()
-        yield
-        auth_contexts.clear()
+class FakeCredentialsCollection:
+    """In-memory mock that simulates a CSFLE-encrypted collection."""
 
-    def test_merges_stored_context(self):
-        auth_contexts["https://target.com"] = {
-            "cookies": "session=abc123",
-            "headers": {"Authorization": "Bearer tok"},
-            "userAgent": "Chrome/120",
-        }
-        h = get_replay_headers("https://target.com")
+    def __init__(self):
+        self._docs: list[dict] = []
+
+    async def find_one(self, filter: dict) -> dict | None:
+        for doc in self._docs:
+            if all(doc.get(k) == v for k, v in filter.items()):
+                return dict(doc)
+        return None
+
+    async def delete_many(self, filter: dict):
+        before = len(self._docs)
+        self._docs = [d for d in self._docs if not all(d.get(k) == v for k, v in filter.items())]
+
+        class _R:
+            deleted_count = before - len(self._docs)
+
+        return _R()
+
+    async def insert_one(self, doc: dict):
+        self._docs.append(dict(doc))
+
+    def find(self):
+        return _FakeCursor(list(self._docs))
+
+
+class _FakeCursor:
+    def __init__(self, docs):
+        self._docs = docs
+        self._idx = 0
+
+    def sort(self, *a, **kw):
+        return self
+
+    def limit(self, n):
+        self._docs = self._docs[:n]
+        return self
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._idx >= len(self._docs):
+            raise StopAsyncIteration
+        doc = self._docs[self._idx]
+        self._idx += 1
+        return doc
+
+
+class TestCredentialVault:
+    @pytest.fixture()
+    def vault(self):
+        col = FakeCredentialsCollection()
+        return CredentialVault(col)
+
+    @pytest.fixture()
+    def null_vault(self):
+        return CredentialVault(None)
+
+    @pytest.mark.asyncio
+    async def test_get_context_empty(self, vault):
+        ctx = await vault.get_context("https://unknown.com")
+        assert ctx == {}
+
+    @pytest.mark.asyncio
+    async def test_store_and_get_context(self, vault):
+        await vault.store(
+            "https://target.com", "session=abc123",
+            {"Authorization": "Bearer tok"}, "Chrome/120",
+        )
+        ctx = await vault.get_context("https://target.com")
+        assert ctx["cookies"] == "session=abc123"
+        assert ctx["headers"]["Authorization"] == "Bearer tok"
+        assert ctx["userAgent"] == "Chrome/120"
+
+    @pytest.mark.asyncio
+    async def test_store_replaces_existing(self, vault):
+        await vault.store("https://target.com", "old=1", {}, "")
+        await vault.store("https://target.com", "new=2", {}, "")
+        ctx = await vault.get_context("https://target.com")
+        assert ctx["cookies"] == "new=2"
+
+    @pytest.mark.asyncio
+    async def test_get_replay_headers_merges_context(self, vault):
+        await vault.store(
+            "https://target.com", "session=abc123",
+            {"Authorization": "Bearer tok"}, "Chrome/120",
+        )
+        h = await vault.get_replay_headers("https://target.com")
         assert h["Cookie"] == "session=abc123"
         assert h["Authorization"] == "Bearer tok"
         assert h["User-Agent"] == "Chrome/120"
 
-    def test_extra_headers_override(self):
-        auth_contexts["https://target.com"] = {
-            "cookies": "a=1",
-            "headers": {"X-Custom": "old"},
-            "userAgent": "",
-        }
-        h = get_replay_headers("https://target.com", extra_headers={"X-Custom": "new"})
+    @pytest.mark.asyncio
+    async def test_get_replay_headers_extra_override(self, vault):
+        await vault.store(
+            "https://target.com", "a=1",
+            {"X-Custom": "old"}, "",
+        )
+        h = await vault.get_replay_headers("https://target.com", extra_headers={"X-Custom": "new"})
         assert h["X-Custom"] == "new"
 
-    def test_strips_host_and_content_headers(self):
-        auth_contexts["https://target.com"] = {
-            "cookies": "",
-            "headers": {"Host": "evil.com", "Content-Length": "99", "X-Keep": "yes"},
-            "userAgent": "",
-        }
-        h = get_replay_headers("https://target.com")
+    @pytest.mark.asyncio
+    async def test_get_replay_headers_strips_host_and_content(self, vault):
+        await vault.store(
+            "https://target.com", "",
+            {"Host": "evil.com", "Content-Length": "99", "X-Keep": "yes"}, "",
+        )
+        h = await vault.get_replay_headers("https://target.com")
         assert "Host" not in h
         assert "Content-Length" not in h
         assert h["X-Keep"] == "yes"
 
-    def test_missing_origin_returns_minimal_headers(self):
-        h = get_replay_headers("https://unknown.com")
+    @pytest.mark.asyncio
+    async def test_get_replay_headers_missing_origin(self, vault):
+        h = await vault.get_replay_headers("https://unknown.com")
         assert isinstance(h, dict)
 
-    def test_strips_r3d_headers(self):
-        auth_contexts["https://target.com"] = {
-            "cookies": "",
-            "headers": {"X-R3D-Session": "secret", "X-Normal": "ok"},
-            "userAgent": "",
-        }
-        h = get_replay_headers("https://target.com")
+    @pytest.mark.asyncio
+    async def test_get_replay_headers_strips_r3d_headers(self, vault):
+        await vault.store(
+            "https://target.com", "",
+            {"X-R3D-Session": "secret", "X-Normal": "ok"}, "",
+        )
+        h = await vault.get_replay_headers("https://target.com")
         assert "X-R3D-Session" not in h
         assert h["X-Normal"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_list_origins(self, vault):
+        await vault.store("https://alpha.com", "a=1", {"X-A": "1"}, "UA-A")
+        await vault.store("https://beta.com", "", {}, "")
+        origins = await vault.list_origins()
+        assert len(origins) == 2
+        alpha = next(o for o in origins if o["origin"] == "https://alpha.com")
+        assert alpha["hasCookies"] is True
+        assert "X-A" in alpha["headerKeys"]
+
+    @pytest.mark.asyncio
+    async def test_delete(self, vault):
+        await vault.store("https://target.com", "x=1", {}, "")
+        deleted = await vault.delete("https://target.com")
+        assert deleted == 1
+        ctx = await vault.get_context("https://target.com")
+        assert ctx == {}
+
+    @pytest.mark.asyncio
+    async def test_null_vault_returns_empty(self, null_vault):
+        ctx = await null_vault.get_context("https://any.com")
+        assert ctx == {}
+        h = await null_vault.get_replay_headers("https://any.com")
+        assert isinstance(h, dict)
+        origins = await null_vault.list_origins()
+        assert origins == []
+        deleted = await null_vault.delete("https://any.com")
+        assert deleted == 0

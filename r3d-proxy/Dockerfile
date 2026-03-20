@@ -1,14 +1,20 @@
 FROM python:3.12-slim
 
+# Security labels
+LABEL org.opencontainers.image.source="https://github.com/your-org/r3d-proxy" \
+      org.opencontainers.image.description="R3D Red Team Proxy with Enterprise Security" \
+      org.opencontainers.image.licenses="MIT"
+
 WORKDIR /app
 
 ARG MONGODB_CRYPT_VERSION=8.0.0
 
-# Install build deps + download tools (curl kept for nuclei + crypt_shared)
+# Install build deps + download tools (removed after use for minimal attack surface)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     unzip \
     libssl-dev \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Nuclei (best-effort, amd64 only)
@@ -42,8 +48,28 @@ COPY routers/ ./routers/
 COPY reports/ ./reports/
 COPY static/ ./static/
 COPY payloads/ ./payloads/
-RUN chmod +x entrypoint.sh
+
+# Remove curl/unzip after downloads (reduce attack surface)
+RUN apt-get remove -y curl unzip && apt-get autoremove -y
+
+# Create non-root user for application
+RUN groupadd -r r3d --gid=1000 && \
+    useradd -r -g r3d --uid=1000 --home-dir=/app --shell=/sbin/nologin r3d && \
+    chown -R r3d:r3d /app && \
+    chmod +x entrypoint.sh
+
+# Create writable directories (for read-only root filesystem support)
+RUN mkdir -p /app/phish_cache /tmp/r3d && \
+    chown -R r3d:r3d /app/phish_cache /tmp/r3d
+
+# Switch to non-root user
+USER r3d
 
 EXPOSE 4000
+
+# Healthcheck defined in docker-compose.yml (verifies full app readiness, not
+# just HTTP 200). Keeping a basic fallback here for standalone `docker run`.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
+  CMD python3 -c "import urllib.request,json; r=json.loads(urllib.request.urlopen('http://localhost:4000/health').read()); exit(0 if r.get('status')=='ok' else 1)" || exit 1
 
 ENTRYPOINT ["./entrypoint.sh"]

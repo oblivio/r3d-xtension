@@ -6,19 +6,23 @@ if [ -z "$R3D_API_KEY" ]; then
   export R3D_API_KEY
 fi
 
-if [ -n "$LOCAL_MASTER_KEY" ]; then
-  CSFLE_LINE="ENABLED  (local dev key)"
+if [ "$KMS_PROVIDER" = "aws" ]; then
+  CSFLE_LINE="AWS KMS (verifying on startup…)"
+elif [ -n "$LOCAL_MASTER_KEY" ]; then
+  CSFLE_LINE="local key (verifying on startup…)"
 else
-  CSFLE_LINE="disabled (set LOCAL_MASTER_KEY to enable)"
+  CSFLE_LINE="disabled"
 fi
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  R3D Proxy — ready                                         ║"
+echo "║  R3D Proxy — starting                                      ║"
 echo "║  Dashboard:  http://localhost:4000                          ║"
-echo "║  CSFLE:      $CSFLE_LINE  ║"
+echo "║  CSFLE:      $CSFLE_LINE"
 echo "║  Extension auto-connects — no config needed.               ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+echo "Look for 'CSFLE: ✓' in the logs below to confirm encryption is live."
 echo ""
 
 exec uvicorn app:app --host 0.0.0.0 --port "${PORT:-4000}"

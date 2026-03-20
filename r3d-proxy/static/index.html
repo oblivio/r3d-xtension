@@ -129,9 +129,58 @@ a:hover{text-decoration:underline}
 .btn-copy{background:none;border:1px solid var(--border-lt);color:var(--txt-dim);font-size:9px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono)}
 .btn-copy:hover{border-color:var(--accent);color:var(--accent)}
 .btn-copy.copied{border-color:var(--green);color:var(--green)}
-.btn-test{background:rgba(105,240,174,.08);border:1px solid rgba(105,240,174,.3);color:var(--green);font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;cursor:pointer;font-family:var(--sans)}
+.btn-test{background:rgba(105,240,174,.08);border:1px solid rgba(105,240,174,.3);color:var(--green);font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;cursor:pointer;font-family:var(--sans);position:relative;overflow:hidden}
 .btn-test:hover{background:rgba(105,240,174,.18);border-color:var(--green)}
-.btn-test.loading{opacity:.5;pointer-events:none}
+.btn-test.loading{pointer-events:none}
+.btn-test.loading::after{content:'';position:absolute;top:0;left:-100%;width:200%;height:100%;background:linear-gradient(90deg,transparent,rgba(105,240,174,.15),transparent);animation:shimmer 1.5s infinite}
+@keyframes shimmer{0%{left:-100%}100%{left:100%}}
+.btn-test.disabled-ext{opacity:.5;cursor:not-allowed;pointer-events:none}
+.btn-regen{background:none;border:1px solid var(--border-lt);color:var(--txt-dim);font-size:9px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono);transition:all .15s}
+.btn-regen:hover{border-color:var(--orange);color:var(--orange)}
+.btn-edit-test{background:none;border:1px solid var(--border-lt);color:var(--txt-dim);font-size:9px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:var(--mono);transition:all .15s}
+.btn-edit-test:hover{border-color:var(--accent);color:var(--accent)}
+.btn-edit-test.active{border-color:var(--yellow);color:var(--yellow)}
+.test-code.editable{color:var(--yellow);border-color:var(--yellow);outline:none;cursor:text}
+.ext-status-dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px;flex-shrink:0}
+.ext-status-dot.connected{background:var(--green);animation:pulse 2s infinite}
+.ext-status-dot.disconnected{background:var(--red)}
+
+/* Test Pipeline Stepper */
+.test-pipeline{display:flex;align-items:center;gap:0;padding:10px 14px 6px;border-bottom:1px solid rgba(105,240,174,.06)}
+.tp-step{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.tp-dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--txt-dim);transition:all .3s;background:var(--bg);font-family:var(--mono)}
+.tp-step.active .tp-dot{border-color:var(--accent);color:var(--accent);box-shadow:0 0 10px rgba(0,229,255,.3);animation:tpPulse 1.5s ease-in-out infinite}
+.tp-step.complete .tp-dot{border-color:var(--green);background:var(--green);color:#000;font-weight:900}
+.tp-step.error .tp-dot{border-color:var(--red);background:rgba(255,23,68,.15);color:var(--red)}
+.tp-step.verdict-vulnerable .tp-dot{border-color:var(--red);background:var(--red);color:#fff;font-weight:900;animation:tpVulnGlow .6s ease-out}
+.tp-step.verdict-safe .tp-dot{border-color:var(--green);background:var(--green);color:#000;font-weight:900}
+@keyframes tpPulse{0%,100%{box-shadow:0 0 10px rgba(0,229,255,.3)}50%{box-shadow:0 0 20px rgba(0,229,255,.5)}}
+@keyframes tpVulnGlow{0%{box-shadow:0 0 0 rgba(255,23,68,0);transform:scale(1)}50%{box-shadow:0 0 24px rgba(255,23,68,.6);transform:scale(1.15)}100%{box-shadow:0 0 10px rgba(255,23,68,.3);transform:scale(1)}}
+.tp-label{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--txt-dim);font-family:var(--mono);white-space:nowrap}
+.tp-step.active .tp-label{color:var(--accent)}
+.tp-step.complete .tp-label{color:var(--green)}
+.tp-step.verdict-vulnerable .tp-label{color:var(--red);font-weight:900}
+.tp-step.verdict-safe .tp-label{color:var(--green);font-weight:900}
+.tp-line{flex:1;height:2px;background:var(--border);min-width:16px;transition:background .3s}
+.tp-line.complete{background:var(--green)}
+.tp-line.active{background:linear-gradient(90deg,var(--green),var(--accent));animation:lineFlow 1s ease-in-out infinite alternate}
+@keyframes lineFlow{0%{opacity:.5}100%{opacity:1}}
+
+/* Streaming test output */
+.test-stream{background:#05050a;border:1px solid var(--border);border-radius:4px;font-family:var(--mono);font-size:11px;padding:8px 10px;max-height:180px;overflow-y:auto;margin-top:6px;line-height:1.6;color:var(--green);white-space:pre-wrap;word-break:break-all}
+.test-stream .ts-line{animation:lineAppear .2s ease-out}
+@keyframes lineAppear{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.test-stream .ts-cursor{display:inline-block;width:6px;height:12px;background:var(--accent);animation:blink 1s step-end infinite;vertical-align:text-bottom}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Verdict animations */
+.verdict-reveal{animation:verdictPopIn .4s cubic-bezier(.34,1.56,.64,1)}
+@keyframes verdictPopIn{0%{opacity:0;transform:scale(.6)}100%{opacity:1;transform:scale(1)}}
+.verdict-badge.verdict-vulnerable{animation:vulnBadgeShake .6s ease-in-out}
+@keyframes vulnBadgeShake{0%,100%{transform:translateX(0)}15%{transform:translateX(-4px)}30%{transform:translateX(4px)}45%{transform:translateX(-3px)}60%{transform:translateX(3px)}75%{transform:translateX(-1px)}90%{transform:translateX(1px)}}
+.verdict-glow-red{box-shadow:0 0 20px rgba(255,23,68,.3);animation:glowFade 2s ease-out forwards}
+.verdict-glow-green{box-shadow:0 0 20px rgba(105,240,174,.3);animation:glowFade 2s ease-out forwards}
+@keyframes glowFade{0%{box-shadow:0 0 24px currentColor}100%{box-shadow:0 0 8px transparent}}
 
 /* AI cards */
 .ai-card{background:linear-gradient(180deg,rgba(19,17,31,.96),rgba(13,13,24,.99));border:1px solid rgba(179,136,255,.2);border-left:3px solid var(--purple);border-radius:var(--r);padding:16px;margin-bottom:12px;min-width:0;overflow-wrap:anywhere;word-break:break-word;box-shadow:0 8px 24px rgba(0,0,0,.12)}
@@ -1849,20 +1898,84 @@ async function _phishSuggest(systemId,domain,pages,modal){
 }
 
 let _lastTestId=null;
+let _extConnected=null;
 
-function renderTestCard(t,findingTitle){
+async function _checkExtensionStatus(){
+  try{
+    const r=await fetch('/r3d/extension/status',{headers:authHeaders()});
+    const d=await r.json();
+    _extConnected=!!d.connected;
+  }catch{_extConnected=false}
+}
+setInterval(_checkExtensionStatus,5000);
+_checkExtensionStatus();
+
+function _renderPipelineStepper(testId,phase){
+  const steps=[
+    {key:'generate',label:'Generate',icon:'1'},
+    {key:'review',label:'Review Code',icon:'2'},
+    {key:'execute',label:'Execute',icon:'3'},
+    {key:'verdict',label:'Verdict',icon:'4'}
+  ];
+  const phaseMap={generating:0,review:1,queued:2,executing:2,verdict:3,error:-1};
+  const ci=phaseMap[phase]??-1;
+
+  return `<div class="test-pipeline" id="tp_${testId}">${steps.map((s,i)=>{
+    let cls='tp-step';
+    if(i<ci)cls+=' complete';
+    else if(i===ci)cls+=' active';
+    const icon=i<ci?'\u2713':s.icon;
+    return `<div class="${cls}" data-step="${s.key}"><div class="tp-dot">${icon}</div><div class="tp-label">${s.label}</div></div>${i<3?`<div class="tp-line${i<ci?' complete':''}${i===ci?' active':''}"></div>`:''}`;
+  }).join('')}</div>`;
+}
+
+function _updatePipeline(testId,phase,verdict){
+  const el=document.getElementById('tp_'+testId);
+  if(!el)return;
+  const steps=el.querySelectorAll('.tp-step');
+  const lines=el.querySelectorAll('.tp-line');
+  const phaseMap={generating:0,review:1,queued:2,executing:2,verdict:3,error:-1};
+  const ci=phaseMap[phase]??-1;
+
+  steps.forEach((step,i)=>{
+    step.className='tp-step';
+    const dot=step.querySelector('.tp-dot');
+    const label=step.querySelector('.tp-label');
+    if(i<ci){step.classList.add('complete');dot.textContent='\u2713'}
+    else if(i===ci){
+      step.classList.add('active');
+      if(phase==='verdict'&&verdict){
+        step.classList.remove('active');
+        step.classList.add('verdict-'+verdict);
+        dot.textContent=verdict==='vulnerable'?'!':'\u2713';
+        label.textContent=verdict.toUpperCase();
+      }
+    }
+  });
+  lines.forEach((line,i)=>{
+    line.className='tp-line';
+    if(i<ci)line.classList.add('complete');
+    else if(i===ci)line.classList.add('active');
+  });
+}
+
+function renderTestCard(t,findingTitle,findingId){
   const testId='tid_'+Math.random().toString(36).slice(2,10);
   const snippet=t.browserSnippet||'';
   const snippetId='snip_'+Math.random().toString(36).slice(2,8);
   const descId='desc_'+testId;
-  const expectId='expect_'+testId;
+  const hasSnippet=snippet&&snippet!=='null';
+  const extDot=_extConnected?'<span class="ext-status-dot connected" title="Extension connected"></span>':'<span class="ext-status-dot disconnected" title="Extension not connected"></span>';
 
   let html=`<div class="test-card" id="tc_${testId}">`;
+  html+=_renderPipelineStepper(testId,'review');
   html+=`<div class="test-card-header">`;
   html+=`<h4>Exploit Test</h4>`;
   html+=`<div class="tc-actions">`;
-  if(snippet&&snippet!=='null'){
-    html+=`<button class="btn-test" data-finding-title="${esc(findingTitle||'')}" onclick="event.stopPropagation();runTestInBrowser(this,'${testId}',document.getElementById('${snippetId}').textContent,this.getAttribute('data-finding-title'))">Run in Browser</button>`;
+  if(hasSnippet){
+    html+=`<button class="btn-test${_extConnected===false?' disabled-ext':''}" data-finding-title="${esc(findingTitle||'')}" data-finding-id="${esc(findingId||'')}" onclick="event.stopPropagation();runTestInBrowser(this,'${testId}',document.getElementById('${snippetId}').textContent,this.getAttribute('data-finding-title'),this.getAttribute('data-finding-id'))">${extDot}Run in Browser</button>`;
+    html+=`<button class="btn-regen" data-fid="${esc(findingId||'')}" onclick="event.stopPropagation();regenTest(this)" title="Generate a new exploit">Regen</button>`;
+    html+=`<button class="btn-edit-test" data-snip-id="${snippetId}" onclick="event.stopPropagation();toggleEditTest(this,'${snippetId}')" title="Edit code before running">Edit</button>`;
     html+=`<button class="btn-copy" onclick="event.stopPropagation();copyToClipboard(this,document.getElementById('${snippetId}').textContent)">Copy</button>`;
   }
   html+=`<button class="tc-dismiss" onclick="dismissTestCard(this)" title="Dismiss">&times;</button>`;
@@ -1872,17 +1985,15 @@ function renderTestCard(t,findingTitle){
   html+=`<div class="test-desc" id="${descId}">${esc(t.description||'')}</div>`;
 
   if(t.expectedVulnerable||t.expectedSafe){
-    html+=`<div style="margin-bottom:8px"><button class="tc-toggle" onclick="toggleTestExpect(this,'${expectId}')">Expected Outcomes</button></div>`;
-    html+=`<div class="test-expect" id="${expectId}">`;
+    html+=`<div class="test-expect tc-visible" style="max-height:120px">`;
     if(t.expectedVulnerable)html+=`<div class="test-expect-vuln"><strong>If Vulnerable</strong>${esc(t.expectedVulnerable)}</div>`;
     if(t.expectedSafe)html+=`<div class="test-expect-safe"><strong>If Safe</strong>${esc(t.expectedSafe)}</div>`;
     html+=`</div>`;
   }
 
-  if(snippet&&snippet!=='null'){
+  if(hasSnippet){
     html+=`<div class="test-section">`;
-    html+=`<div style="margin-bottom:6px"><button class="tc-toggle" onclick="toggleTestCode(this,'${snippetId}')">Show Code</button></div>`;
-    html+=`<div class="test-code browser-code tc-collapsed" id="${snippetId}">${esc(snippet)}</div>`;
+    html+=`<div class="test-code browser-code tc-expanded" id="${snippetId}" style="max-height:300px;padding:10px 12px;overflow-y:auto">${esc(snippet)}</div>`;
     html+=`</div>`;
   }
 
@@ -1896,45 +2007,79 @@ window.dismissTestCard=function(btn){
   if(card){card.style.opacity='0';setTimeout(()=>{card.style.display='none'},200)}
 };
 
-window.toggleTestCode=function(btn,snippetId){
+window.toggleEditTest=function(btn,snippetId){
   const code=document.getElementById(snippetId);
   if(!code)return;
-  const collapsed=code.classList.contains('tc-collapsed');
-  code.classList.toggle('tc-collapsed',!collapsed);
-  code.classList.toggle('tc-expanded',collapsed);
-  btn.textContent=collapsed?'Hide Code':'Show Code';
+  const editing=code.contentEditable==='true';
+  code.contentEditable=editing?'false':'true';
+  code.classList.toggle('editable',!editing);
+  btn.classList.toggle('active',!editing);
+  btn.textContent=editing?'Edit':'Editing...';
+  if(!editing)code.focus();
 };
 
-window.toggleTestExpect=function(btn,expectId){
-  const el=document.getElementById(expectId);
-  if(!el)return;
-  const visible=el.classList.contains('tc-visible');
-  el.classList.toggle('tc-visible',!visible);
-  btn.textContent=visible?'Expected Outcomes':'Hide Outcomes';
+window.regenTest=function(btn){
+  const fid=btn.dataset.fid;
+  if(!fid)return;
+  const testBtn=document.querySelector(`[data-fid="${fid}"].btn-test`);
+  if(testBtn){testBtn.click()}
 };
 
 window.runTestInBrowser=async function(btn,testId,snippet,findingTitle,findingId){
-  btn.classList.add('loading');btn.textContent='Injecting...';
+  if(_extConnected===false){
+    const resultEl=document.getElementById('test-result-'+testId);
+    if(resultEl)resultEl.innerHTML='<div style="padding:8px;font-size:11px;color:var(--red)">Extension not connected. Open the R3D side panel in Chrome to connect.</div>';
+    return;
+  }
+  btn.classList.add('loading');
+  const extDot=_extConnected?'<span class="ext-status-dot connected"></span>':'';
+  btn.innerHTML=extDot+'Queuing...';
   _lastTestId=testId;
+  _updatePipeline(testId,'queued');
+
   const resultEl=document.getElementById('test-result-'+testId);
-  if(resultEl)resultEl.innerHTML='<div style="padding:8px;font-size:11px;color:var(--accent);font-family:var(--mono)"><span style="color:var(--yellow)">QUEUED</span> — Sending to extension for injection...</div>';
+  if(resultEl)resultEl.innerHTML=`<div class="test-stream" id="ts_${testId}"><span class="ts-line" style="color:var(--yellow)">QUEUED</span> — Sending to extension...<span class="ts-cursor"></span></div>`;
+
   try{
     const r=await fetch('/r3d/test/run',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({
       testId,snippet,findingTitle,findingId:findingId||'',
       sessionId:activeDetail?.id||'',
-      targetOrigin:_inferTargetOrigin()
+      targetOrigin:_inferTargetOrigin(findingId)
     })});
     const data=await r.json();
     if(!data.ok){
-      if(resultEl)resultEl.innerHTML=`<div style="padding:8px;font-size:11px;color:var(--red)">Failed to queue test: ${esc(data.error||'unknown')}</div>`;
+      _updatePipeline(testId,'error');
+      if(resultEl)resultEl.innerHTML=`<div style="padding:8px;font-size:11px;color:var(--red)">Failed to queue: ${esc(data.error||'unknown')}</div>`;
     }
   }catch(e){
+    _updatePipeline(testId,'error');
     if(resultEl)resultEl.innerHTML=`<div style="padding:8px;font-size:11px;color:var(--red)">Error: ${esc(e.message)}</div>`;
   }
-  finally{btn.classList.remove('loading');btn.textContent='Run in Browser'}
+  finally{
+    btn.classList.remove('loading');
+    const dot2=_extConnected?'<span class="ext-status-dot connected"></span>':'<span class="ext-status-dot disconnected"></span>';
+    btn.innerHTML=dot2+'Run in Browser';
+  }
 };
 
-function _inferTargetOrigin(){
+function _inferTargetOrigin(findingId){
+  // Try to get origin from the specific finding being tested
+  if(findingId){
+    const finding=_findingDataCache.get(findingId);
+    if(finding){
+      const candidateUrls=[finding.url,finding.evidence?.url,finding.evidence?.requestUrl,finding.evidence?.endpoint];
+      for(const u of candidateUrls){
+        if(u){try{return new URL(u).origin}catch{}}
+      }
+      // Try to extract from system ID (often the domain)
+      const sysId=finding.systemId||finding.system||'';
+      if(sysId){
+        const sysOrigin='https://'+sysId.replace(/-/g,'.');
+        try{new URL(sysOrigin);return sysOrigin}catch{}
+      }
+    }
+  }
+  // Fallback: first request in session
   if(!activeDetail)return '';
   const events=activeDetail.events||[];
   for(const e of events){
@@ -2967,6 +3112,9 @@ window.testFinding=async function(btn,targetId){
   const finding=_findingDataCache.get(targetId);
   if(!finding){el.innerHTML='<div class="test-card"><h4>Error</h4><div class="test-desc">Finding data not found.</div></div>';btn.classList.remove('loading');btn.textContent='Test';return}
 
+  const genTid='gen_'+Math.random().toString(36).slice(2,8);
+  el.innerHTML=`<div class="test-card" id="tc_${genTid}">${_renderPipelineStepper(genTid,'generating')}<div class="test-card-body" style="text-align:center;padding:20px"><div style="color:var(--accent);font-size:11px;font-family:var(--mono)">Generating exploit test...</div><div style="color:var(--txt-dim);font-size:10px;margin-top:4px">Analyzing ${esc(finding.title||'')} with CWE strategy engine</div></div></div>`;
+
   const proxyBase=location.origin;
   const evidenceStr=JSON.stringify(finding.evidence||{}).substring(0,2000);
   const headerCtx=finding.headerContext||finding.evidence?.headerContext||finding.evidence?.cspAnalysis?JSON.stringify(finding.evidence?.cspAnalysis||finding.evidence?.headerContext||{}).substring(0,800):'None';
@@ -3180,7 +3328,7 @@ Response Headers / CSP: ${headerCtx}`;
       </div>`;
     }
     if(parsed){
-      el.innerHTML=stratBadge+renderTestCard(parsed,finding.title||'');
+      el.innerHTML=stratBadge+renderTestCard(parsed,finding.title||'',targetId);
     }else{
       el.innerHTML=stratBadge+`<div class="test-card"><h4>Test</h4><div class="test-code">${esc(data.content)}</div></div>`;
     }
@@ -3681,6 +3829,29 @@ function _handleSSE(e){
         renderDetail();
       }
     }
+    if(msg.type==='test_executing'){
+      const tid=msg.testId||'';
+      _updatePipeline(tid,'executing');
+      const stream=document.getElementById('ts_'+tid);
+      if(stream){
+        stream.innerHTML=`<div class="ts-line" style="color:var(--accent)">EXECUTING on ${esc(msg.executedOn||'target tab')}${msg.tabId?' (tab '+msg.tabId+')':''}</div><span class="ts-cursor"></span>`;
+      }
+    }
+    if(msg.type==='test_output'){
+      const tid=msg.testId||'';
+      const stream=document.getElementById('ts_'+tid);
+      if(stream){
+        const cursor=stream.querySelector('.ts-cursor');
+        const lineEl=document.createElement('div');
+        lineEl.className='ts-line';
+        const line=msg.line||'';
+        lineEl.style.color=line.includes('VULNERABLE')?'var(--red)':line.includes('SAFE')?'var(--green)':line.includes('ERROR')?'var(--orange)':'var(--txt)';
+        lineEl.textContent=line;
+        if(cursor)stream.insertBefore(lineEl,cursor);
+        else stream.appendChild(lineEl);
+        stream.scrollTop=stream.scrollHeight;
+      }
+    }
     if(msg.type==='test_result'){
       const tid=msg.testId||'';
       const el=document.getElementById('test-result-'+tid);
@@ -3691,16 +3862,19 @@ function _handleSSE(e){
         const networkFail=isFetchBlock||isCSPBlock;
         let verdict=msg.verdict||((output).includes('VULNERABLE')?'vulnerable':(output).includes('SAFE')?'safe':'inconclusive');
         if(verdict==='safe'&&networkFail) verdict='blocked';
+        _updatePipeline(tid,'verdict',verdict);
+
         const vColors={vulnerable:'var(--red)',safe:'var(--green)',error:'var(--red)',inconclusive:'var(--accent)',blocked:'var(--orange)'};
         const vLabels={vulnerable:'VULNERABLE',safe:'SAFE',error:'FAILED',inconclusive:'EXECUTED',blocked:'BLOCKED'};
         const color=msg.error?'var(--red)':vColors[verdict]||'var(--accent)';
         const icon=msg.error?'FAILED':vLabels[verdict]||'EXECUTED';
+        const glowCls=verdict==='vulnerable'?'verdict-glow-red':verdict==='safe'?'verdict-glow-green':'';
         const targetInfo=msg.executedOn?`<div style="font-size:9px;color:var(--txt-dim);margin-bottom:4px">Target: ${esc(msg.executedOn)}</div>`:'';
         const blockedNote=verdict==='blocked'?`<div style="margin-top:6px;padding:8px 10px;border-radius:6px;background:rgba(255,145,0,.06);border:1px solid rgba(255,145,0,.15);font-size:10px;color:var(--orange);line-height:1.6">
           <strong style="display:block;margin-bottom:3px">Network blocked</strong>
-          The test snippet tried to reach an endpoint that the target page's CSP or network policy blocked. This does not mean the vulnerability is absent — the test methodology needs adjustment. Try regenerating the test or use the proxy relay endpoints.
+          The test methodology needs adjustment. Try regenerating or use the proxy relay endpoints.
         </div>`:'';
-        el.innerHTML=`<div style="margin-top:8px;padding:10px 12px;border:1px solid ${color};border-radius:var(--r);background:rgba(0,0,0,.3);animation:panelIn .2s var(--ease)">
+        el.innerHTML=`<div class="verdict-reveal ${glowCls}" style="margin-top:8px;padding:10px 12px;border:1px solid ${color};border-radius:var(--r);background:rgba(0,0,0,.3)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
             <span class="verdict-badge verdict-${verdict==='blocked'?'error':verdict}">${icon}</span>
             <span style="font-size:10px;color:var(--txt-dim)">Test Result</span>

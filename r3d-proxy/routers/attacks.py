@@ -2,14 +2,15 @@
 
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.auth import verify_api_key
 from core.config import OPEN_CORS_HEADERS
-from core.replay import get_http_client, get_replay_headers
+from core.replay import get_http_client
 from core.sse import broadcast
+from core.vault import CredentialVault
 
 router = APIRouter(prefix="/r3d/attack", tags=["attacks"])
 
@@ -48,11 +49,12 @@ class ExchangeCodeRequest(BaseModel):
 
 
 @router.post("/fetch", dependencies=[Depends(verify_api_key)])
-async def attack_fetch(body: ServerFetchRequest):
+async def attack_fetch(body: ServerFetchRequest, request: Request):
     """Server-side fetch — bypasses all browser restrictions.
 
     Auto-merges stored auth context (cookies, headers) from the extension
-    for the target origin unless useAuthContext is False.
+    for the target origin unless useAuthContext is False. Credentials are
+    decrypted on-demand from CSFLE-encrypted storage.
     """
     try:
         origin = ""
@@ -61,7 +63,8 @@ async def attack_fetch(body: ServerFetchRequest):
             origin = f"{p.scheme}://{p.netloc}"
         except Exception:
             pass
-        merged = get_replay_headers(origin, body.headers) if body.useAuthContext else (body.headers or {})
+        vault: CredentialVault = request.app.state.credential_vault
+        merged = await vault.get_replay_headers(origin, body.headers) if body.useAuthContext else (body.headers or {})
         async with get_http_client(follow_redirects=body.follow_redirects, timeout=15) as client:
             resp = await client.request(
                 method=body.method,
@@ -103,10 +106,11 @@ async def attack_fetch(body: ServerFetchRequest):
 
 
 @router.post("/validate-token", dependencies=[Depends(verify_api_key)])
-async def attack_validate_token(body: ValidateTokenRequest):
+async def attack_validate_token(body: ValidateTokenRequest, request: Request):
     """Trade a stolen access_token for user identity via /userinfo.
 
-    Auto-merges stored auth context for the IdP origin.
+    Auto-merges stored auth context for the IdP origin. Credentials are
+    decrypted on-demand from CSFLE-encrypted storage.
     """
     try:
         origin = ""
@@ -115,8 +119,9 @@ async def attack_validate_token(body: ValidateTokenRequest):
             origin = f"{p.scheme}://{p.netloc}"
         except Exception:
             pass
+        vault: CredentialVault = request.app.state.credential_vault
         async with get_http_client(timeout=10) as client:
-            headers = get_replay_headers(origin, body.headers)
+            headers = await vault.get_replay_headers(origin, body.headers)
             headers.update({"Authorization": f"Bearer {body.accessToken}", "Accept": "application/json"})
             resp = await client.get(
                 body.userinfoUrl,
@@ -150,10 +155,11 @@ async def attack_validate_token(body: ValidateTokenRequest):
 
 
 @router.post("/test-redirect", dependencies=[Depends(verify_api_key)])
-async def attack_test_redirect(body: TestRedirectRequest):
+async def attack_test_redirect(body: TestRedirectRequest, request: Request):
     """Follow a redirect chain server-side and report every hop.
 
-    Auto-merges stored auth context for the target origin.
+    Auto-merges stored auth context for the target origin. Credentials are
+    decrypted on-demand from CSFLE-encrypted storage.
     """
     try:
         origin = ""
@@ -162,7 +168,8 @@ async def attack_test_redirect(body: TestRedirectRequest):
             origin = f"{p.scheme}://{p.netloc}"
         except Exception:
             pass
-        merged = get_replay_headers(origin, body.headers)
+        vault: CredentialVault = request.app.state.credential_vault
+        merged = await vault.get_replay_headers(origin, body.headers)
         hops = []
         async with get_http_client(follow_redirects=True, timeout=15, max_redirects=10) as client:
             resp = await client.get(body.url, headers=merged)
@@ -194,10 +201,11 @@ async def attack_test_redirect(body: TestRedirectRequest):
 
 
 @router.post("/exchange-code", dependencies=[Depends(verify_api_key)])
-async def attack_exchange_code(body: ExchangeCodeRequest):
+async def attack_exchange_code(body: ExchangeCodeRequest, request: Request):
     """Attempt OAuth code->token exchange server-side (proves missing PKCE).
 
-    Auto-merges stored auth context for the token endpoint origin.
+    Auto-merges stored auth context for the token endpoint origin. Credentials
+    are decrypted on-demand from CSFLE-encrypted storage.
     """
     try:
         origin = ""
@@ -206,8 +214,9 @@ async def attack_exchange_code(body: ExchangeCodeRequest):
             origin = f"{p.scheme}://{p.netloc}"
         except Exception:
             pass
+        vault: CredentialVault = request.app.state.credential_vault
         async with get_http_client(timeout=10) as client:
-            headers = get_replay_headers(origin, body.headers)
+            headers = await vault.get_replay_headers(origin, body.headers)
             headers["Content-Type"] = "application/x-www-form-urlencoded"
             resp = await client.post(
                 body.tokenEndpoint,

@@ -376,6 +376,9 @@
     }).join('');
   }
 
+  let _expandedFinding = null;
+  const _panelTestState = {};
+
   function renderFindings() {
     const el = document.getElementById('panel-findings');
     const findings = snapshot.findings || [];
@@ -385,23 +388,247 @@
     }
     const sorted = [...findings].sort((a, b) => (SEV_W[b.severity] || 0) - (SEV_W[a.severity] || 0));
     const sid = snapshot.session?.id;
-    el.innerHTML = sorted.map(f => {
+
+    el.innerHTML = sorted.map((f, i) => {
+      const fid = 'spf_' + i;
       const st = f.status || 'likely';
       const stCls = st === 'confirmed' ? 'status-confirmed' : st === 'likely' ? 'status-likely' : 'status-hypothesis';
-      const deepLink = sid ? `${DASHBOARD_BASE}/#session=${sid}` : DASHBOARD_BASE;
-      return `<div class="finding-item" data-link="${esc(deepLink)}">
-        <span class="sev-dot sev-${f.severity || 'INFO'}"></span>
-        <span class="finding-title">${esc(f.title || 'Untitled')}</span>
-        <span class="finding-status ${stCls}">${esc(st)}</span>
-        <span class="finding-meta">${esc(f.severity || '?')}</span>
+      const expanded = _expandedFinding === fid;
+      const sev = f.severity || 'INFO';
+      const url = f.url || f.evidence?.url || f.evidence?.requestUrl || '';
+      const shortUrl = url ? url.replace(/^https?:\/\//, '').substring(0, 50) : '';
+      const cwe = f.cwe || '';
+      const detail = f.detail || f.evidenceSummary || '';
+
+      let drawerHtml = '';
+      if (expanded) {
+        const ts = _panelTestState[fid];
+        drawerHtml = `<div class="finding-drawer">
+          <div class="fd-meta">
+            <span class="fd-sev fd-sev-${sev}">${esc(sev)}</span>
+            ${cwe ? `<span class="fd-cwe">${esc(cwe)}</span>` : ''}
+            <span class="fd-status ${stCls}">${esc(st)}</span>
+          </div>
+          ${shortUrl ? `<div class="fd-url" title="${esc(url)}">${esc(shortUrl)}</div>` : ''}
+          ${detail ? `<div class="fd-detail">${esc(detail.substring(0, 200))}</div>` : ''}
+          ${_renderPipeline(fid, ts)}
+          ${_renderPanelTestCard(fid, ts)}
+          <div class="fd-actions">
+            <button class="btn-generate-exploit" data-fid="${fid}" data-fi="${i}">Generate Exploit</button>
+            <a class="fd-dash-link" data-link="${esc(sid ? DASHBOARD_BASE + '/#session=' + sid : DASHBOARD_BASE)}">Open in Dashboard</a>
+          </div>
+        </div>`;
+      }
+
+      return `<div class="finding-row${expanded ? ' expanded' : ''}" data-fid="${fid}">
+        <div class="finding-item">
+          <span class="sev-dot sev-${sev}"></span>
+          <span class="finding-title">${esc(f.title || 'Untitled')}</span>
+          <span class="finding-status ${stCls}">${esc(st)}</span>
+          <span class="finding-chevron">${expanded ? '\u25B4' : '\u25BE'}</span>
+        </div>
+        ${drawerHtml}
       </div>`;
     }).join('');
+
     el.querySelectorAll('.finding-item').forEach(item => {
       item.addEventListener('click', () => {
-        const link = item.dataset.link;
-        if (link) chrome.tabs.create({ url: link });
+        const row = item.closest('.finding-row');
+        const fid = row?.dataset.fid;
+        if (!fid) return;
+        _expandedFinding = _expandedFinding === fid ? null : fid;
+        renderFindings();
       });
     });
+
+    el.querySelectorAll('.btn-generate-exploit').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const fid = btn.dataset.fid;
+        const fi = parseInt(btn.dataset.fi, 10);
+        _generateExploitFromPanel(fid, fi);
+      });
+    });
+
+    el.querySelectorAll('.btn-run-panel-test').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const fid = btn.dataset.fid;
+        _runTestFromPanel(fid);
+      });
+    });
+
+    el.querySelectorAll('.fd-dash-link').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        chrome.tabs.create({ url: link.dataset.link });
+      });
+    });
+  }
+
+  function _renderPipeline(fid, ts) {
+    const phases = ['generate', 'review', 'execute', 'verdict'];
+    const labels = ['Generate', 'Review', 'Execute', 'Verdict'];
+    const currentPhase = ts?.phase || 'idle';
+
+    const phaseIndex = {
+      idle: -1, generating: 0, review: 1, queued: 2, executing: 2, verdict: 3, error: -2
+    };
+    const ci = phaseIndex[currentPhase] ?? -1;
+    if (ci === -1 && currentPhase !== 'error') return '';
+
+    return `<div class="exploit-pipeline">
+      ${phases.map((p, i) => {
+        let cls = 'pipeline-step';
+        if (i < ci) cls += ' complete';
+        else if (i === ci) cls += ' active';
+        if (currentPhase === 'error' && ts?.phase === 'error') cls += i === 0 ? ' error' : '';
+        const verdictLabel = i === 3 && ts?.verdict ? ts.verdict.toUpperCase() : labels[i];
+        return `<div class="${cls}">
+          <div class="ps-dot">${i < ci ? '\u2713' : i === ci && currentPhase === 'executing' ? '' : ''}</div>
+          <div class="ps-label">${verdictLabel}</div>
+        </div>${i < 3 ? '<div class="ps-line' + (i < ci ? ' complete' : '') + '"></div>' : ''}`;
+      }).join('')}
+    </div>`;
+  }
+
+  function _renderPanelTestCard(fid, ts) {
+    if (!ts?.parsed) return '';
+    const p = ts.parsed;
+    const snippet = p.browserSnippet || '';
+    const hasSnippet = snippet && snippet !== 'null';
+
+    let resultHtml = '';
+    if (ts.phase === 'verdict' && ts.output) {
+      const v = ts.verdict || 'inconclusive';
+      const vCls = v === 'vulnerable' ? 'verdict-vuln' : v === 'safe' ? 'verdict-safe' : 'verdict-other';
+      resultHtml = `<div class="panel-verdict ${vCls}">
+        <span class="pv-badge">${v.toUpperCase()}</span>
+      </div>
+      <pre class="panel-test-output">${esc(ts.output)}</pre>`;
+    } else if (ts.phase === 'executing' || ts.phase === 'queued') {
+      resultHtml = `<div class="panel-test-running">
+        <span class="ptr-dot"></span> Executing on target...
+      </div>`;
+    } else if (ts.phase === 'error') {
+      resultHtml = `<div class="panel-test-error">${esc(ts.error || 'Unknown error')}</div>`;
+    }
+
+    return `<div class="panel-test-card">
+      ${p.description ? `<div class="ptc-desc">${esc(p.description)}</div>` : ''}
+      ${p.expectedVulnerable ? `<div class="ptc-expect"><span class="ptc-if-vuln">If Vulnerable:</span> ${esc(p.expectedVulnerable)}</div>` : ''}
+      ${p.expectedSafe ? `<div class="ptc-expect"><span class="ptc-if-safe">If Safe:</span> ${esc(p.expectedSafe)}</div>` : ''}
+      ${hasSnippet ? `<pre class="ptc-code">${esc(snippet)}</pre>` : ''}
+      ${hasSnippet && ts.phase === 'review' ? `<button class="btn-run-panel-test" data-fid="${fid}">Run in Browser</button>` : ''}
+      ${resultHtml}
+    </div>`;
+  }
+
+  function _generateExploitFromPanel(fid, findingIndex) {
+    const findings = snapshot.findings || [];
+    const sorted = [...findings].sort((a, b) => (SEV_W[b.severity] || 0) - (SEV_W[a.severity] || 0));
+    const finding = sorted[findingIndex];
+    if (!finding) return;
+
+    _panelTestState[fid] = { phase: 'generating', findingIndex };
+    renderFindings();
+
+    const sid = snapshot.session?.id || '';
+    const evidenceStr = JSON.stringify(finding.evidence || {}).substring(0, 2000);
+    const url = finding.url || finding.evidence?.url || finding.evidence?.requestUrl || 'N/A';
+
+    const prompt = `You are an expert penetration tester writing a browser exploit test. This snippet is injected into the TARGET PAGE via a Chrome extension.
+
+EXECUTION CONTEXT:
+- Runs on the TARGET ORIGIN with full access to document, window, localStorage, sessionStorage, document.cookie, fetch, DOM
+- Use the CSP-SAFE relay: window.__r3d_proxy(endpoint, body)
+- console.log with "[R3D TEST]" prefix is captured
+
+Return JSON: {"description":"what this proves","browserSnippet":"(async()=>{ ... })()","expectedVulnerable":"console output","expectedSafe":"console output"}
+
+CRITICAL RULES:
+1. Snippet MUST be a self-executing async IIFE: (async()=>{ ... })()
+2. Log results as console.log('[R3D TEST] VULNERABLE: ...') or console.log('[R3D TEST] SAFE: ...')
+3. NEVER use fetch() to reach the proxy. ALWAYS use window.__r3d_proxy(endpoint, body).
+4. Use REAL URLs from the evidence. NEVER invent URLs.
+5. Handle errors with try/catch. Under 50 lines.
+6. ALWAYS use useAuthContext: true on r3d/attack/fetch.
+
+TARGET FINDING:
+Finding: ${finding.title || ''}
+Severity: ${finding.severity || ''} | Status: ${finding.status || 'unknown'}
+CWE: ${finding.cwe || ''}
+TARGET URL: ${url}
+Detail: ${finding.detail || finding.evidenceSummary || ''}
+Evidence: ${evidenceStr}`;
+
+    chrome.runtime.sendMessage({
+      type: 'r3d-test-generate',
+      prompt,
+      findingId: fid,
+    }, (resp) => {
+      if (resp?.ok && resp.parsed) {
+        _panelTestState[fid] = { phase: 'review', parsed: resp.parsed, findingIndex };
+      } else if (resp?.ok && resp.content) {
+        let parsed; try { parsed = JSON.parse(resp.content); } catch {}
+        _panelTestState[fid] = parsed
+          ? { phase: 'review', parsed, findingIndex }
+          : { phase: 'error', error: 'Failed to parse LLM response', findingIndex };
+      } else {
+        _panelTestState[fid] = { phase: 'error', error: resp?.error || 'Generation failed', findingIndex };
+      }
+      renderFindings();
+    });
+  }
+
+  function _runTestFromPanel(fid) {
+    const ts = _panelTestState[fid];
+    if (!ts?.parsed?.browserSnippet) return;
+
+    const findings = snapshot.findings || [];
+    const sorted = [...findings].sort((a, b) => (SEV_W[b.severity] || 0) - (SEV_W[a.severity] || 0));
+    const finding = sorted[ts.findingIndex] || {};
+
+    const testId = 'sp_' + Date.now().toString(36);
+    _panelTestState[fid] = { ...ts, phase: 'queued', testId };
+    renderFindings();
+
+    chrome.runtime.sendMessage({
+      type: 'r3d-test-run',
+      testId,
+      snippet: ts.parsed.browserSnippet,
+      findingTitle: finding.title || '',
+      findingId: fid,
+      sessionId: snapshot.session?.id || '',
+      targetOrigin: '',
+    }, () => {});
+
+    _pollPanelTestResult(fid, testId);
+  }
+
+  function _pollPanelTestResult(fid, testId) {
+    const check = () => {
+      const ts = snapshot?.testStatus;
+      if (ts && ts.testId === testId) {
+        if (ts.phase === 'executing') {
+          _panelTestState[fid] = { ..._panelTestState[fid], phase: 'executing' };
+          renderFindings();
+        }
+        if (ts.phase === 'verdict') {
+          _panelTestState[fid] = { ..._panelTestState[fid], phase: 'verdict', verdict: ts.verdict, output: ts.output };
+          renderFindings();
+          return;
+        }
+        if (ts.phase === 'error') {
+          _panelTestState[fid] = { ..._panelTestState[fid], phase: 'error', error: ts.error };
+          renderFindings();
+          return;
+        }
+      }
+      setTimeout(check, 1000);
+    };
+    setTimeout(check, 500);
   }
 
   function renderSystems() {

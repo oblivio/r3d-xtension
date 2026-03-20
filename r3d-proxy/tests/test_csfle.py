@@ -31,17 +31,40 @@ needs_docker = pytest.mark.skipif(
 class TestBootstrapCSFLENoDocker:
     def test_disabled_when_no_key(self, monkeypatch):
         monkeypatch.delenv("LOCAL_MASTER_KEY", raising=False)
+        monkeypatch.delenv("KMS_PROVIDER", raising=False)
         opts, info = bootstrap_csfle("mongodb://localhost:27017/test")
         assert opts is None
         assert info["status"] == "disabled"
 
     def test_rejects_bad_key_length(self, monkeypatch):
+        monkeypatch.delenv("KMS_PROVIDER", raising=False)
         bad_key = base64.b64encode(b"tooshort").decode()
         monkeypatch.setenv("LOCAL_MASTER_KEY", bad_key)
         opts, info = bootstrap_csfle("mongodb://localhost:27017/test")
         assert opts is None
         assert info["status"] == "error"
         assert "bad key length" in info["reason"]
+
+    def test_aws_provider_missing_arn(self, monkeypatch):
+        monkeypatch.setenv("KMS_PROVIDER", "aws")
+        monkeypatch.delenv("AWS_KMS_KEY_ARN", raising=False)
+        opts, info = bootstrap_csfle("mongodb://localhost:27017/test")
+        assert opts is None
+        assert info["status"] == "error"
+        assert "missing KMS key ARN" in info["reason"]
+
+    def test_provider_selection_aws(self, monkeypatch):
+        monkeypatch.setenv("KMS_PROVIDER", "aws")
+        monkeypatch.delenv("AWS_KMS_KEY_ARN", raising=False)
+        opts, info = bootstrap_csfle("mongodb://localhost:27017/test")
+        assert info["status"] == "error"
+
+    def test_provider_selection_local_fallback(self, monkeypatch):
+        monkeypatch.delenv("KMS_PROVIDER", raising=False)
+        monkeypatch.delenv("LOCAL_MASTER_KEY", raising=False)
+        opts, info = bootstrap_csfle("mongodb://localhost:27017/test")
+        assert opts is None
+        assert info["status"] == "disabled"
 
 
 # ── Full CSFLE integration tests (Docker required) ───────────────────
@@ -160,6 +183,7 @@ class TestCSFLEAPIRoundTrip:
         from contextlib import asynccontextmanager
         from httpx import ASGITransport, AsyncClient
         from app import app
+        from core.vault import CredentialVault
 
         @asynccontextmanager
         async def _csfle_lifespan(a):
@@ -177,6 +201,7 @@ class TestCSFLEAPIRoundTrip:
             a.state.users_col = db["r3d_users"]
             a.state.audit_col = db["r3d_audit_log"]
             a.state.csfle_info = csfle_info
+            a.state.credential_vault = CredentialVault(db["r3d_credentials"])
             yield
 
         app.router.lifespan_context = _csfle_lifespan

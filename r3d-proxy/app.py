@@ -9,14 +9,15 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pymongo import AsyncMongoClient
 
 from core.config import CORS_ORIGINS, MDB_URI
 from core.db import bootstrap_csfle
-from core.replay import auth_contexts, load_payloads
+from core.replay import load_payloads
+from core.vault import CredentialVault
 from routers import (
     attacks,
     auth,
@@ -40,6 +41,12 @@ from routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Initialize JWT secret rotation
+    if not os.environ.get("R3D_JWT_SECRET"):
+        from core.rotation import initialize_rotation
+        initialize_rotation()
+        print("JWT secret rotation initialized")
+
     load_payloads()
     if MDB_URI:
         auto_enc_opts, csfle_info = bootstrap_csfle(MDB_URI)
@@ -63,16 +70,8 @@ async def lifespan(app: FastAPI):
         await app.state.users_col.create_index("username", unique=True, background=True)
         await app.state.audit_col.create_index("ts", background=True)
 
-        try:
-            async for doc in app.state.credentials_col.find():
-                auth_contexts[doc["origin"]] = {
-                    "cookies": doc.get("cookies", ""),
-                    "headers": json.loads(doc.get("headers_json", "{}")),
-                    "userAgent": doc.get("userAgent", ""),
-                    "ts": str(doc.get("capturedAt", "")),
-                }
-        except Exception:
-            pass
+        # Initialize on-demand credential vault (zero in-memory credential cache)
+        app.state.credential_vault = CredentialVault(app.state.credentials_col)
     else:
         app.state.sessions_col = None
         app.state.overflow_col = None
@@ -82,6 +81,7 @@ async def lifespan(app: FastAPI):
         app.state.users_col = None
         app.state.audit_col = None
         app.state.csfle_info = {"status": "disabled"}
+        app.state.credential_vault = CredentialVault(None)
     yield
 
 
@@ -91,8 +91,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicit methods only
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "User-Agent"],  # Explicit headers only
 )
 
 # ─── Include Routers ─────────────────────────────────────────────────
@@ -120,6 +120,14 @@ app.include_router(dashboard.router)
 _static_dir = Path(__file__).parent / "static"
 if _static_dir.is_dir():
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+# ─── Dependencies ────────────────────────────────────────────────────
+
+
+def get_vault(request: Request) -> CredentialVault:
+    """FastAPI dependency to access the on-demand credential vault."""
+    return request.app.state.credential_vault
+
 
 # ─── Dev Entrypoint ──────────────────────────────────────────────────
 

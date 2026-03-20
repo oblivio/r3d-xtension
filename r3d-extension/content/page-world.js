@@ -68,12 +68,17 @@
   window.__r3d_proxy = function(endpoint, body) {
     const id = '__r3d_relay_' + (++_relaySeq) + '_' + Date.now();
     return new Promise((resolve, reject) => {
+      let settled = false;
       const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
         window.removeEventListener('__r3d_relay_response', handler);
-        reject(new Error('R3D proxy relay timeout (10s)'));
-      }, 10000);
+        reject(new Error('R3D proxy relay timeout (15s) — is the extension loaded?'));
+      }, 15000);
       function handler(e) {
+        if (settled) return;
         if (e.detail && e.detail._relayId === id) {
+          settled = true;
           clearTimeout(timeout);
           window.removeEventListener('__r3d_relay_response', handler);
           if (e.detail.error) reject(new Error(e.detail.error));

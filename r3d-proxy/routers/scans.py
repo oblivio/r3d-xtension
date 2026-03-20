@@ -4,14 +4,15 @@ import asyncio
 import uuid as _uuid
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from core.auth import verify_api_key
 from core.config import now
 from core.opsec import throttle
-from core.replay import get_http_client, get_replay_headers, payload_meta, payloads
+from core.replay import get_http_client, payload_meta, payloads
 from core.sse import broadcast
+from core.vault import CredentialVault
 from core import state
 
 router = APIRouter(prefix="/r3d/scan", tags=["scans"])
@@ -41,7 +42,7 @@ class FuzzRequest(BaseModel):
 
 
 @router.post("/run", dependencies=[Depends(verify_api_key)])
-async def scan_run(body: ScanRunRequest):
+async def scan_run(body: ScanRunRequest, request: Request):
     """Execute a list of probe tasks against target endpoints."""
     scan_id = str(_uuid.uuid4())[:8]
     scan = {
@@ -63,9 +64,10 @@ async def scan_run(body: ScanRunRequest):
                     origin = f"{p.scheme}://{p.netloc}"
                 except Exception:
                     pass
+                vault: CredentialVault = request.app.state.credential_vault
                 headers = probe.get("headers", {})
                 if body.useAuthContext:
-                    headers = get_replay_headers(origin, headers)
+                    headers = await vault.get_replay_headers(origin, headers)
 
                 async with get_http_client(timeout=10, follow_redirects=True) as client:
                     resp = await client.request(
@@ -119,7 +121,7 @@ async def scan_run(body: ScanRunRequest):
 
 
 @router.post("/fuzz", dependencies=[Depends(verify_api_key)])
-async def scan_fuzz(body: FuzzRequest):
+async def scan_fuzz(body: FuzzRequest, request: Request):
     """Parameter fuzzing — mutate parameters with payload libraries."""
     scan_id = str(_uuid.uuid4())[:8]
     payload_list: list[str] = []
@@ -143,9 +145,10 @@ async def scan_fuzz(body: FuzzRequest):
             origin = f"{p.scheme}://{p.netloc}"
         except Exception:
             pass
+        vault: CredentialVault = request.app.state.credential_vault
         headers = body.headers.copy()
         if body.useAuthContext:
-            headers = get_replay_headers(origin, headers)
+            headers = await vault.get_replay_headers(origin, headers)
 
         baseline = None
         try:
