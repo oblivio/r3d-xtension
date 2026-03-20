@@ -15,7 +15,7 @@
 
 ## The Problem: Pentesting Toolchains Are Broken
 
-Web application penetration testing in 2024 looks a lot like it did in 2014. You fire up Burp Suite, open a browser, click around the target, and manually hunt for vulnerabilities across dozens of tabs. When you find something, you copy-paste evidence into a report. When the engagement spans multiple systems with shared authentication, you juggle cookies between tools and pray nothing expires.
+Web application penetration testing in 2026 looks a lot like it did in 2014. You fire up Burp Suite, open a browser, click around the target, and manually hunt for vulnerabilities across dozens of tabs. When you find something, you copy-paste evidence into a report. When the engagement spans multiple systems with shared authentication, you juggle cookies between tools and pray nothing expires.
 
 The toolchain has three fundamental problems:
 
