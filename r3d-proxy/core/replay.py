@@ -1,6 +1,6 @@
 """Payload loading and HTTP client helpers.
 
-Credential replay is handled by core.vault.CredentialVault (on-demand CSFLE
+Credential replay is handled by core.vault.CredentialVault (on-demand QE
 decrypt). This module retains only payload management and the HTTP client
 factory — no credential state lives here.
 """

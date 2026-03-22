@@ -1,7 +1,7 @@
 """R3D Proxy Server — FastAPI application factory.
 
 Assembles the app from core modules and routers, runs lifespan setup
-(MongoDB, CSFLE, payloads), and mounts static files.
+(MongoDB, Queryable Encryption, payloads), and mounts static files.
 """
 
 import json
@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pymongo import AsyncMongoClient
 
 from core.config import CORS_ORIGINS, MDB_URI
-from core.db import bootstrap_csfle
+from core.db import bootstrap_qe, compact_qe_metadata
 from core.replay import load_payloads
 from core.vault import CredentialVault
 from routers import (
@@ -49,8 +49,8 @@ async def lifespan(app: FastAPI):
 
     load_payloads()
     if MDB_URI:
-        auto_enc_opts, csfle_info = bootstrap_csfle(MDB_URI)
-        app.state.csfle_info = csfle_info
+        auto_enc_opts, qe_info = bootstrap_qe(MDB_URI)
+        app.state.qe_info = qe_info
 
         client = AsyncMongoClient(MDB_URI, auto_encryption_opts=auto_enc_opts)
         db = client.get_default_database(default="r3d")
@@ -80,9 +80,13 @@ async def lifespan(app: FastAPI):
         app.state.credentials_col = None
         app.state.users_col = None
         app.state.audit_col = None
-        app.state.csfle_info = {"status": "disabled"}
+        app.state.qe_info = {"status": "disabled"}
         app.state.credential_vault = CredentialVault(None)
     yield
+    # Graceful shutdown: compact QE metadata to prevent ECOC bloat
+    if MDB_URI and getattr(app.state, "sessions_col", None) is not None:
+        db = app.state.sessions_col.database
+        await compact_qe_metadata(db)
 
 
 app = FastAPI(title="R3D Proxy", version="5.3.0", lifespan=lifespan)

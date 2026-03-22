@@ -14,13 +14,13 @@ flowchart LR
         MongoDB["MongoDB Atlas Local 8.0<br/>(r3d database)"]
         LocalStack["LocalStack<br/>(KMS service)"]
         KMSInit["kms-init sidecar<br/>(aws-cli)"]
-        Proxy["R3D Proxy<br/>(FastAPI + CSFLE)"]
+        Proxy["R3D Proxy<br/>(FastAPI + QE)"]
     end
 
     KMSInit -->|"create CMK, write ARN"| KMSConfig[(kms_config volume)]
     LocalStack -->|"KMS API"| KMSInit
     KMSConfig -->|"read ARN"| Proxy
-    MongoDB -->|"CSFLE auto-encrypt"| Proxy
+    MongoDB -->|"QE auto-encrypt"| Proxy
     LocalStack -->|"HTTPS :4566<br/>(DEK encrypt/decrypt)"| Proxy
 ```
 
@@ -54,7 +54,7 @@ localstack:
     test: ["CMD", "awslocal", "kms", "list-keys"]
 ```
 
-LocalStack emulates the AWS KMS API locally -- zero AWS costs during development. It provides full `CreateKey`, `Encrypt`, `Decrypt`, and `GenerateDataKey` API compatibility. The critical detail: LocalStack serves both HTTP (port 4566) and HTTPS on the same port. `libmongocrypt` (the C library that handles CSFLE) always connects via HTTPS, so the kms-init script verifies HTTPS readiness before declaring success.
+LocalStack emulates the AWS KMS API locally -- zero AWS costs during development. It provides full `CreateKey`, `Encrypt`, `Decrypt`, and `GenerateDataKey` API compatibility. The critical detail: LocalStack serves both HTTP (port 4566) and HTTPS on the same port. `libmongocrypt` (the C library that handles Queryable Encryption) always connects via HTTPS, so the kms-init script verifies HTTPS readiness before declaring success.
 
 ### The KMS Init Sidecar
 
@@ -76,11 +76,11 @@ fi
 
 # Create new KMS key
 KEY_ID=$(aws kms create-key \
-  --description "R3D CSFLE Master Key (LocalStack)" \
+  --description "R3D QE Master Key (LocalStack)" \
   --query 'KeyMetadata.KeyId' \
   --output text)
 
-aws kms create-alias --alias-name "alias/r3d-csfle" --target-key-id "$KEY_ID"
+aws kms create-alias --alias-name "alias/r3d-qe" --target-key-id "$KEY_ID"
 
 KEY_ARN=$(aws kms describe-key --key-id "$KEY_ID" --query 'KeyMetadata.Arn' --output text)
 echo "$KEY_ARN" > /kms-config/arn.txt
@@ -137,7 +137,7 @@ proxy:
       condition: service_completed_successfully
 ```
 
-The `depends_on` chain is critical: the proxy waits for MongoDB to be healthy AND for kms-init to complete successfully. This guarantees the KMS key exists and HTTPS is verified before CSFLE bootstrap runs.
+The `depends_on` chain is critical: the proxy waits for MongoDB to be healthy AND for kms-init to complete successfully. This guarantees the KMS key exists and HTTPS is verified before QE bootstrap runs.
 
 ### The Entrypoint
 
@@ -153,7 +153,7 @@ fi
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  R3D Proxy — starting                                      ║"
 echo "║  Dashboard:  http://localhost:4000                          ║"
-echo "║  CSFLE:      $CSFLE_LINE"
+echo "║  QE:         $QE_LINE"
 echo "║  Extension auto-connects — no config needed.               ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 
@@ -173,8 +173,8 @@ The startup sequence:
 1. MongoDB Atlas Local starts, `mongot` initializes
 2. LocalStack starts, KMS service becomes healthy
 3. kms-init creates the CMK, writes ARN, verifies HTTPS
-4. Proxy starts, reads ARN from `/kms-config/arn.txt`, bootstraps CSFLE
-5. Startup banner prints with `CSFLE: ✓ AWS KMS verified`
+4. Proxy starts, reads ARN from `/kms-config/arn.txt`, bootstraps Queryable Encryption
+5. Startup banner prints with `QE: ✓ AWS KMS verified`
 
 The extension auto-discovers the proxy at `localhost:4000` and performs the handshake. No manual configuration needed.
 
@@ -198,7 +198,7 @@ class FakeCollection:
         # ... in-memory matching logic ...
 ```
 
-The test app is built with a no-op lifespan (skipping real MongoDB/CSFLE bootstrap) and all collections replaced with `FakeCollection` instances:
+The test app is built with a no-op lifespan (skipping real MongoDB/QE bootstrap) and all collections replaced with `FakeCollection` instances:
 
 ```python
 def _build_test_app():
@@ -227,16 +227,16 @@ async def client(test_app):
 
 This makes tests fast (sub-second) and dependency-free.
 
-### CSFLE Integration Tests
+### QE Integration Tests
 
-Tests that exercise the full encryption chain are marked with `@pytest.mark.csfle` and run against real Docker services:
+Tests that exercise the full encryption chain are marked with `@pytest.mark.qe` and run against real Docker services:
 
 ```yaml
 # docker-compose.test.yml
 test:
   build: .
   entrypoint: ["python", "-m", "pytest"]
-  command: ["-m", "csfle", "-v", "--tb=short"]
+  command: ["-m", "qe", "-v", "--tb=short"]
   environment:
     MDB_URI: mongodb://r3d:r3d@mongodb:27017/r3d_test?authSource=admin
     LOCAL_MASTER_KEY: AAECAwQF...  # 96-byte test key
@@ -253,9 +253,10 @@ These tests verify:
 
 - KMS key creation and DEK generation
 - Encrypted collection creation with the correct schema
-- Document insertion with CSFLE auto-encryption
+- Document insertion with QE auto-encryption
 - Round-trip read with auto-decryption
 - Equality queries on encrypted `origin` field
+- Schema version migration and compaction
 - Smoke test (encrypt + decrypt a sentinel value)
 
 The test compose file uses `LOCAL_MASTER_KEY` by default for simplicity, but can be switched to the AWS KMS path (`KMS_PROVIDER=aws` + `AWS_KMS_ENDPOINT=localstack:4566`) to test the full KMS code path.
@@ -266,7 +267,7 @@ The test compose file uses `LOCAL_MASTER_KEY` by default for simplicity, but can
 |-----------|-------|-------------|----------------|
 | Unit tests | <1s | None | Business logic, data transformations |
 | API tests (mocked) | <3s | None | Route handlers, auth, request validation |
-| CSFLE integration | ~30s | Docker (MongoDB + LocalStack) | Full encryption chain, KMS bootstrap |
+| QE integration | ~30s | Docker (MongoDB + LocalStack) | Full encryption chain, KMS bootstrap |
 
 ---
 
@@ -277,8 +278,8 @@ The `terraform/` directory contains two files that set up production KMS and IAM
 ### `kms.tf` -- Customer Master Key
 
 ```hcl
-resource "aws_kms_key" "r3d_csfle" {
-  description              = "R3D CSFLE Master Key - ${var.environment}"
+resource "aws_kms_key" "r3d_qe" {
+  description              = "R3D QE Master Key - ${var.environment}"
   enable_key_rotation      = true
   deletion_window_in_days  = 30
 
@@ -301,7 +302,7 @@ resource "aws_kms_key" "r3d_csfle" {
   })
 
   tags = {
-    Purpose    = "MongoDB CSFLE credential encryption"
+    Purpose    = "MongoDB QE credential encryption"
     Compliance = "SOC2,PCI-DSS"
   }
 }
@@ -370,7 +371,7 @@ resource "aws_iam_role" "r3d_eks_irsa" {
 
 Each role gets the same two policies attached:
 
-- **KMS CSFLE policy** -- `kms:Encrypt`, `kms:Decrypt`, `kms:GenerateDataKey`, `kms:DescribeKey` scoped to the specific key ARN
+- **KMS QE policy** -- `kms:Encrypt`, `kms:Decrypt`, `kms:GenerateDataKey`, `kms:DescribeKey` scoped to the specific key ARN
 - **CloudWatch Logs policy** -- `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents` scoped to `/aws/r3d/*`
 
 ### Deploying
@@ -466,7 +467,7 @@ For teams already running R3D with `LOCAL_MASTER_KEY`, the migration path:
 2. **Deploy KMS infrastructure** -- `terraform apply`
 3. **Drop old encrypted collections** -- data encrypted with the old key is incompatible
 4. **Update environment** -- set `KMS_PROVIDER=aws`, `AWS_KMS_KEY_ARN`, remove `LOCAL_MASTER_KEY`
-5. **Restart** -- CSFLE bootstraps with KMS
+5. **Restart** -- QE bootstraps with KMS
 6. **Re-import credentials** -- POST each credential through the API (re-encrypted with KMS)
 7. **Verify** -- check `curl localhost:4000/health` shows `"provider": "aws"`
 
@@ -515,7 +516,7 @@ The infrastructure choices map directly to compliance requirements:
 | Framework | Requirement | How R3D Addresses It |
 |-----------|-------------|---------------------|
 | SOC 2 CC6.1 | Logical access controls | IAM roles + JWT RBAC |
-| SOC 2 CC6.6 | Encryption | CSFLE + KMS |
+| SOC 2 CC6.6 | Encryption | QE + KMS |
 | SOC 2 CC7.2 | Monitoring | security_monitor + anomaly detection |
 | SOC 2 CC7.3 | Audit logging | CloudTrail + r3d_audit_log |
 | PCI DSS 3.4 | Key management | KMS annual rotation |
@@ -534,11 +535,11 @@ Over six posts, we've covered the complete R3D platform:
 1. **[Architecture](part1-architecture.md)** -- the vision, design decisions, and end-to-end engagement workflow
 2. **[Chrome Extension](part2-extension.md)** -- service worker capture, MAIN world hooks, CSP relay, and side panel UI
 3. **[Server-Side Infrastructure](part3-proxy.md)** -- 18 FastAPI routers for attacks, scans, AI planning, phishing, and proofs
-4. **[CSFLE + KMS](part4-csfle.md)** -- field-level encryption, the CredentialVault pattern, and on-demand decryption
+4. **[CSFLE + KMS](part4-csfle.md)** -- field-level encryption, the CredentialVault pattern, and on-demand decryption (see also: **[QE Deep Dive](QE.md)**)
 5. **[Operational Security](part5-opsec.md)** -- TLS stealth, JWT rotation, handshake hardening, and container lockdown
 6. **[Deployment](part6-deployment.md)** -- Docker Compose for dev, Terraform for production, and three deployment patterns
 
-The core thesis: **red team tools should be hardened to the same standard as the systems they test.** CSFLE ensures a database compromise yields nothing. The vault pattern ensures a memory dump yields nothing. KMS ensures the master key never leaves an HSM. And the stealth stack ensures blue teams see browser traffic, not automated tooling.
+The core thesis: **red team tools should be hardened to the same standard as the systems they test.** Queryable Encryption ensures a database compromise yields nothing -- not even frequency analysis, thanks to non-deterministic ciphertext. The vault pattern ensures a memory dump yields nothing. KMS ensures the master key never leaves an HSM. And the stealth stack ensures blue teams see browser traffic, not automated tooling.
 
 If your red team proxy can't survive a memory dump, you're not ready for enterprise engagements. Build for the threat model you'd apply to your own targets.
 

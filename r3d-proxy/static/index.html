@@ -3768,7 +3768,7 @@ function renderEmptyDashboard(b) {
 function renderHealthCards(b) {
   const h = b.health || {};
   const stats = b.stats || {};
-  const csfle = h.csfle || {};
+  const enc = h.encryption || {};
   const ext = b.extension || {};
   const extConnected = ext.connected;
   const extState = ext.sessionState;
@@ -3780,7 +3780,7 @@ function renderHealthCards(b) {
   }
   const cards = [
     { label: 'MongoDB', val: h.mongodb === 'connected' ? 'Connected' : 'Unavailable', color: h.mongodb === 'connected' ? 'var(--green)' : 'var(--orange)' },
-    { label: 'CSFLE', val: csfle.status === 'enabled' ? 'Enabled' : 'Disabled', color: csfle.status === 'enabled' ? 'var(--green)' : 'var(--txt-dim)' },
+    { label: 'QE', val: enc.status === 'enabled' ? 'Enabled' : 'Disabled', color: enc.status === 'enabled' ? 'var(--green)' : 'var(--txt-dim)' },
     { label: 'Auth', val: h.auth === 'enabled' ? 'Enabled' : 'Open', color: h.auth === 'enabled' ? 'var(--green)' : 'var(--orange)' },
     { label: 'LLM Model', val: (h.model || 'none').split('/').pop(), color: h.model ? 'var(--accent)' : 'var(--txt-dim)' },
     { label: 'Extension', val: extVal, color: extColor },

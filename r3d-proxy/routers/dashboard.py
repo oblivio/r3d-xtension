@@ -113,7 +113,7 @@ async def health(request: Request):
     """Health check endpoint.
 
     Unauthenticated requests only receive minimal status info. Authenticated
-    requests receive full system details including MongoDB, CSFLE, and model config.
+    requests receive full system details including MongoDB, QE, and model config.
 
     This prevents information disclosure to potential attackers probing the system.
     """
@@ -131,7 +131,7 @@ async def health(request: Request):
         "status": "ok",
         "version": "5.3.0",
         "mongodb": "connected" if request.app.state.sessions_col is not None else "not configured",
-        "csfle": getattr(request.app.state, "csfle_info", {"status": "disabled"}),
+        "encryption": getattr(request.app.state, "qe_info", {"status": "disabled"}),
         "default_model": DEFAULT_MODEL,
         "auth": "enabled" if R3D_API_KEY else "disabled",
     }
@@ -195,7 +195,7 @@ async def dashboard_bootstrap(request: Request):
         "health": {
             "version": "5.3.0",
             "mongodb": "connected" if mongo_ok else "not configured",
-            "csfle": getattr(request.app.state, "csfle_info", {"status": "disabled"}),
+            "encryption": getattr(request.app.state, "qe_info", {"status": "disabled"}),
             "model": DEFAULT_MODEL,
             "auth": "enabled" if R3D_API_KEY else "disabled",
         },
@@ -266,7 +266,11 @@ async def extension_status():
     }
 
 
-_LOCALHOST_ADDRS = {"127.0.0.1", "::1", "localhost", "0.0.0.0"}
+_LOCALHOST_ADDRS = {
+    "127.0.0.1", "::1", "localhost", "0.0.0.0",
+    # Docker Desktop for Mac/Windows routes host traffic through gateway IPs
+    "192.168.65.1", "172.17.0.1",
+}
 
 
 @router.post("/r3d/handshake")

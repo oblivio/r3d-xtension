@@ -108,6 +108,8 @@ async function restoreSession() {
   try {
     const data = await chrome.storage.local.get('r3d_session');
     if (!data.r3d_session) return;
+    // Guard: never overwrite a session that handleSessionStart already began
+    if (session.state === 'starting' || session.state === 'active') return;
     const s = data.r3d_session;
     Object.assign(session, s);
     if (s.state === 'active' || s.state === 'paused') {
@@ -171,12 +173,14 @@ const MAX_ACTIVITY_LOG = 200;
 const aiAnalyses = new Map();
 const aiAutoAnalyzed = new Set();
 
-// Load persistent config on startup, then auto-discover proxy
+// Load persistent config on startup, then auto-discover proxy.
+// _initReady resolves once session + config are fully restored so panels
+// always receive a complete state snapshot on connect.
 policyManager.loadFromStorage();
 AIClient.loadConfig();
-restoreSession();
 
-(async () => {
+const _initReady = (async () => {
+  await restoreSession();
   await AIClient.loadConfig();
   const cfg = AIClient.getConfig();
   const needsDiscovery = !cfg.apiKey || cfg.apiKey === 'r3d-local-dev-key' || !cfg.endpoint;
@@ -343,7 +347,11 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name === 'r3d-panel' || port.name === 'r3d-sidepanel') {
     connectedPanels.add(port);
     port.onDisconnect.addListener(() => connectedPanels.delete(port));
-    port.postMessage({ type: 'state-snapshot', state: getStateSnapshot() });
+    _initReady.then(() => {
+      if (connectedPanels.has(port)) {
+        port.postMessage({ type: 'state-snapshot', state: getStateSnapshot() });
+      }
+    });
   }
 });
 
@@ -415,7 +423,16 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => 
 // ─── Session Handlers ───────────────────────────────────────────────
 
 async function handleSessionStart(opts) {
-  if (session.state === 'active') return { error: 'Session already active' };
+  if (session.state === 'active' || session.state === 'paused') {
+    // Stale session from a previous proxy lifecycle — silently tear down
+    // so the user doesn't have to manually end a dead session.
+    stopFlushTimer();
+    const staleId = session.id;
+    await SessionClient.endSession(staleId, null).catch(() => {});
+    session.state = 'ended';
+    session.endedAt = Date.now();
+    await persistSession();
+  }
 
   clearAnalysisState();
 
@@ -533,11 +550,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // ─── Session control ────────────────────────────────────────────
   if (message.type === 'r3d-session-start') {
-    handleSessionStart(message).then(sendResponse);
+    _initReady.then(() => handleSessionStart(message)).then(sendResponse);
     return true;
   }
   if (message.type === 'r3d-session-end') {
-    handleSessionEnd().then(sendResponse);
+    _initReady.then(() => handleSessionEnd()).then(sendResponse);
     return true;
   }
   if (message.type === 'r3d-session-pause') {

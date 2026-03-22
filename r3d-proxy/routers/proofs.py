@@ -49,7 +49,7 @@ SECURITY_HEADERS = [
 async def prove(url: str, test: str = "headers", origin: str = "", request: Request = None):
     """One-click proof page — fetches a target URL server-side and renders proof.
 
-    Credentials are decrypted on-demand from CSFLE-encrypted storage.
+    Credentials are decrypted on-demand from QE-encrypted storage.
     """
     target = url
     vault: CredentialVault = request.app.state.credential_vault

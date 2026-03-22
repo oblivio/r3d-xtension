@@ -54,7 +54,7 @@ async def attack_fetch(body: ServerFetchRequest, request: Request):
 
     Auto-merges stored auth context (cookies, headers) from the extension
     for the target origin unless useAuthContext is False. Credentials are
-    decrypted on-demand from CSFLE-encrypted storage.
+    decrypted on-demand from QE-encrypted storage.
     """
     try:
         origin = ""
@@ -110,7 +110,7 @@ async def attack_validate_token(body: ValidateTokenRequest, request: Request):
     """Trade a stolen access_token for user identity via /userinfo.
 
     Auto-merges stored auth context for the IdP origin. Credentials are
-    decrypted on-demand from CSFLE-encrypted storage.
+    decrypted on-demand from QE-encrypted storage.
     """
     try:
         origin = ""
@@ -159,7 +159,7 @@ async def attack_test_redirect(body: TestRedirectRequest, request: Request):
     """Follow a redirect chain server-side and report every hop.
 
     Auto-merges stored auth context for the target origin. Credentials are
-    decrypted on-demand from CSFLE-encrypted storage.
+    decrypted on-demand from QE-encrypted storage.
     """
     try:
         origin = ""
@@ -205,7 +205,7 @@ async def attack_exchange_code(body: ExchangeCodeRequest, request: Request):
     """Attempt OAuth code->token exchange server-side (proves missing PKCE).
 
     Auto-merges stored auth context for the token endpoint origin. Credentials
-    are decrypted on-demand from CSFLE-encrypted storage.
+    are decrypted on-demand from QE-encrypted storage.
     """
     try:
         origin = ""

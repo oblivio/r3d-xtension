@@ -70,7 +70,7 @@ class TestHealthInfoDisclosure:
         assert data == {"status": "ok"}
         assert "version" not in data
         assert "mongodb" not in data
-        assert "csfle" not in data
+        assert "encryption" not in data
 
     async def test_authenticated_health_has_details(self, client, auth_header):
         resp = await client.get("/health", headers=auth_header)

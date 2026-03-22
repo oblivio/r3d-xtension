@@ -174,7 +174,7 @@ def _build_test_app() -> Any:
     app.state.credentials_col = creds_col
     app.state.users_col = FakeCollection()
     app.state.audit_col = FakeCollection()
-    app.state.csfle_info = {"status": "disabled"}
+    app.state.qe_info = {"status": "disabled"}
     app.state.credential_vault = CredentialVault(creds_col)
 
     return app
@@ -193,6 +193,7 @@ def test_app():
     app.state.credentials_col = creds_col
     app.state.users_col = FakeCollection()
     app.state.audit_col = FakeCollection()
+    app.state.qe_info = {"status": "disabled"}
     app.state.credential_vault = CredentialVault(creds_col)
     return app
 

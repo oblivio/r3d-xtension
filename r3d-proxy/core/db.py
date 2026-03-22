@@ -1,9 +1,8 @@
-"""MongoDB client helpers and CSFLE bootstrap."""
+"""MongoDB client helpers and Queryable Encryption (QE) bootstrap."""
 
 import base64
 import json
 import os
-import ssl
 import time
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +18,10 @@ _FIELD_DEFS = [
     ("origin",       True),
     ("cookies",      False),
     ("headers_json", False),
+    ("userAgent",    False),
 ]
+
+_QE_SCHEMA_VERSION = 2
 
 _MAX_BOOTSTRAP_RETRIES = 5
 
@@ -55,16 +57,11 @@ def _build_aws_kms_config() -> tuple[str, str, dict, dict, str, dict] | None:
         master_key["endpoint"] = kms_endpoint
 
     kms_tls_options: dict = {}
-    if kms_endpoint:
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        kms_tls_options = {"aws": ssl_context}
 
     return key_arn, region, {"aws": aws_config}, master_key, kms_endpoint, kms_tls_options
 
 
-def _csfle_smoke_test(client_encryption: ClientEncryption, key_ids: dict) -> None:
+def _qe_smoke_test(client_encryption: ClientEncryption, key_ids: dict) -> None:
     """Encrypt + decrypt a test value to verify the full KMS -> DEK chain works."""
     sentinel = "r3d-smoke-test"
     encrypted = client_encryption.encrypt(
@@ -79,8 +76,54 @@ def _csfle_smoke_test(client_encryption: ClientEncryption, key_ids: dict) -> Non
         )
 
 
+def _migrate_qe_collection(
+    db,
+    setup_client,
+    client_encryption: ClientEncryption,
+    encrypted_fields: dict,
+    provider: str,
+    master_key,
+) -> None:
+    """Check schema version and recreate r3d_credentials if the QE schema changed.
+
+    QE encrypted field schemas are immutable — adding or removing fields
+    requires dropping and recreating the collection.  We track a version
+    number in encryption.__r3d_meta so bootstrap can detect drift.
+    """
+    meta_col = setup_client["encryption"]["__r3d_meta"]
+    meta = meta_col.find_one({"_id": "qe_schema_version"})
+    stored_version = meta["version"] if meta else 0
+
+    needs_create = "r3d_credentials" not in db.list_collection_names()
+
+    if not needs_create and stored_version == _QE_SCHEMA_VERSION:
+        return
+
+    if not needs_create and stored_version != _QE_SCHEMA_VERSION:
+        print(f"QE: Schema version mismatch (stored={stored_version}, "
+              f"current={_QE_SCHEMA_VERSION}) — recreating r3d_credentials")
+        db.drop_collection("r3d_credentials")
+        for suffix in ("esc", "ecoc", "ecc"):
+            internal = f"enxcol_.r3d_credentials.{suffix}"
+            if internal in db.list_collection_names():
+                db.drop_collection(internal)
+
+    try:
+        client_encryption.create_encrypted_collection(
+            db, "r3d_credentials", encrypted_fields, provider, master_key,
+        )
+    except Exception as e:
+        print(f"QE: Warning during collection setup: {e}")
+
+    meta_col.update_one(
+        {"_id": "qe_schema_version"},
+        {"$set": {"version": _QE_SCHEMA_VERSION}},
+        upsert=True,
+    )
+
+
 def _bootstrap_aws_kms(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
-    """Bootstrap CSFLE with AWS KMS provider.
+    """Bootstrap Queryable Encryption with AWS KMS provider.
 
     Retries up to _MAX_BOOTSTRAP_RETRIES times with exponential backoff to
     handle transient KMS/TLS issues (especially with LocalStack HTTPS).
@@ -101,7 +144,7 @@ def _bootstrap_aws_kms(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
     """
     config = _build_aws_kms_config()
     if config is None:
-        print("CSFLE: AWS_KMS_KEY_ARN not set and /kms-config/arn.txt not found")
+        print("QE: AWS_KMS_KEY_ARN not set and /kms-config/arn.txt not found")
         return None, {"status": "error", "reason": "missing KMS key ARN"}
 
     key_arn, region, kms_providers, master_key, kms_endpoint, kms_tls_options = config
@@ -148,23 +191,18 @@ def _bootstrap_aws_kms(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
                         "path": "origin",
                         "bsonType": "string",
                         "keyId": key_ids["origin"],
-                        "queries": {"queryType": "equality"},
+                        "queries": {"queryType": "equality", "contention": 4},
                     },
                     {"path": "cookies", "bsonType": "string", "keyId": key_ids["cookies"]},
                     {"path": "headers_json", "bsonType": "string", "keyId": key_ids["headers_json"]},
+                    {"path": "userAgent", "bsonType": "string", "keyId": key_ids["userAgent"]},
                 ]
             }
 
             db = setup_client.get_default_database(default="r3d")
-            if "r3d_credentials" not in db.list_collection_names():
-                try:
-                    client_encryption.create_encrypted_collection(
-                        db, "r3d_credentials", encrypted_fields, "aws", master_key,
-                    )
-                except Exception as e:
-                    print(f"CSFLE: Warning during collection setup: {e}")
+            _migrate_qe_collection(db, setup_client, client_encryption, encrypted_fields, "aws", master_key)
 
-            _csfle_smoke_test(client_encryption, key_ids)
+            _qe_smoke_test(client_encryption, key_ids)
 
             client_encryption.close()
             setup_client.close()
@@ -179,7 +217,7 @@ def _bootstrap_aws_kms(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
             if kms_tls_options:
                 opts_kwargs["kms_tls_options"] = kms_tls_options
 
-            print(f"CSFLE: ✓ AWS KMS verified — round-trip encrypt/decrypt passed "
+            print(f"QE: ✓ AWS KMS verified — round-trip encrypt/decrypt passed "
                   f"({len(key_ids)} DEKs, {len(encrypted_fields['fields'])} encrypted fields)")
             return AutoEncryptionOpts(**opts_kwargs), {
                 "status": "enabled",
@@ -187,7 +225,7 @@ def _bootstrap_aws_kms(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
                 "region": region,
                 "keyArn": key_arn,
                 "collection": "r3d.r3d_credentials",
-                "encrypted_fields": ["origin", "cookies", "headers_json"],
+                "encrypted_fields": [f["path"] for f in encrypted_fields["fields"]],
                 "verified": True,
             }
 
@@ -201,27 +239,27 @@ def _bootstrap_aws_kms(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
                         pass
             if attempt < _MAX_BOOTSTRAP_RETRIES:
                 delay = 2 ** attempt
-                print(f"CSFLE: Attempt {attempt}/{_MAX_BOOTSTRAP_RETRIES} failed "
+                print(f"QE: Attempt {attempt}/{_MAX_BOOTSTRAP_RETRIES} failed "
                       f"({e}), retrying in {delay}s...")
                 time.sleep(delay)
 
-    print(f"CSFLE: ✗ All {_MAX_BOOTSTRAP_RETRIES} attempts failed: {last_error}")
+    print(f"QE: ✗ All {_MAX_BOOTSTRAP_RETRIES} attempts failed: {last_error}")
     return None, {"status": "error", "reason": str(last_error)}
 
 
-def bootstrap_csfle(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
-    """Sync one-time setup: key vault, data key, encrypted collection.
+def bootstrap_qe(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
+    """Sync one-time setup: key vault, data keys, QE-encrypted collection.
 
     Returns (auto_encryption_opts, info_dict).
 
     KMS Provider Selection (via KMS_PROVIDER env var):
       - "aws": AWS KMS with IAM authentication (recommended for production)
       - "local": Local master key (insecure, dev/test only)
-      - unset/empty: CSFLE disabled, no encryption
+      - unset/empty: QE disabled, no encryption
 
     AWS KMS PRODUCTION SETUP:
       1. Create a CMK in AWS KMS:
-           aws kms create-key --description "R3D CSFLE Master Key"
+           aws kms create-key --description "R3D QE Master Key"
 
       2. Enable automatic key rotation:
            aws kms enable-key-rotation --key-id <key-id>
@@ -263,7 +301,7 @@ def bootstrap_csfle(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
 
     local_master_key = base64.b64decode(master_key_b64)
     if len(local_master_key) != 96:
-        print(f"CSFLE: LOCAL_MASTER_KEY must decode to 96 bytes (got {len(local_master_key)})")
+        print(f"QE: LOCAL_MASTER_KEY must decode to 96 bytes (got {len(local_master_key)})")
         return None, {"status": "error", "reason": "bad key length"}
 
     kms_providers = {"local": {"key": local_master_key}}
@@ -306,23 +344,18 @@ def bootstrap_csfle(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
                 "path": "origin",
                 "bsonType": "string",
                 "keyId": key_ids["origin"],
-                "queries": {"queryType": "equality"},
+                "queries": {"queryType": "equality", "contention": 4},
             },
             {"path": "cookies", "bsonType": "string", "keyId": key_ids["cookies"]},
             {"path": "headers_json", "bsonType": "string", "keyId": key_ids["headers_json"]},
+            {"path": "userAgent", "bsonType": "string", "keyId": key_ids["userAgent"]},
         ]
     }
 
     db = setup_client.get_default_database(default="r3d")
-    if "r3d_credentials" not in db.list_collection_names():
-        try:
-            client_encryption.create_encrypted_collection(
-                db, "r3d_credentials", encrypted_fields, "local", local_master_key,
-            )
-        except Exception as e:
-            print(f"CSFLE: Warning during collection setup: {e}")
+    _migrate_qe_collection(db, setup_client, client_encryption, encrypted_fields, "local", local_master_key)
 
-    _csfle_smoke_test(client_encryption, key_ids)
+    _qe_smoke_test(client_encryption, key_ids)
 
     client_encryption.close()
     setup_client.close()
@@ -335,15 +368,30 @@ def bootstrap_csfle(mdb_uri: str) -> tuple[AutoEncryptionOpts | None, dict]:
     if crypt_shared_lib_path:
         opts_kwargs["crypt_shared_lib_path"] = crypt_shared_lib_path
 
-    print(f"CSFLE: ✓ Local provider verified — round-trip encrypt/decrypt passed "
+    print(f"QE: ✓ Local provider verified — round-trip encrypt/decrypt passed "
           f"({len(key_ids)} DEKs, {len(encrypted_fields['fields'])} encrypted fields)")
     return AutoEncryptionOpts(**opts_kwargs), {
         "status": "enabled",
         "provider": "local",
         "collection": "r3d.r3d_credentials",
-        "encrypted_fields": ["origin", "cookies", "headers_json"],
+        "encrypted_fields": [f["path"] for f in encrypted_fields["fields"]],
         "verified": True,
     }
+
+
+async def compact_qe_metadata(db) -> bool:
+    """Run compactStructuredEncryptionData to clean QE internal metadata.
+
+    Should be called periodically or on graceful shutdown to prevent
+    unbounded growth of the ECOC collection that tracks encrypted operations.
+    """
+    try:
+        await db.command("compactStructuredEncryptionData", "r3d_credentials")
+        print("QE: compaction completed")
+        return True
+    except Exception as e:
+        print(f"QE: compaction skipped — {e}")
+        return False
 
 
 def get_sessions_col(request: Request):

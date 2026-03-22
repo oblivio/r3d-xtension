@@ -88,7 +88,7 @@ def _do_load(payload_dir: Path):
 
 
 class FakeCredentialsCollection:
-    """In-memory mock that simulates a CSFLE-encrypted collection."""
+    """In-memory mock that simulates a QE-encrypted collection."""
 
     def __init__(self):
         self._docs: list[dict] = []

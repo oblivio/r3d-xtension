@@ -25,8 +25,8 @@ class AuthContextRequest(BaseModel):
 async def push_auth_context(body: AuthContextRequest, request: Request):
     """Extension pushes auth context for an origin so attack helpers can use it.
 
-    Credentials are encrypted via CSFLE and stored in MongoDB. No in-memory
-    cache is kept — credentials are decrypted on-demand per request.
+    Credentials are encrypted via Queryable Encryption and stored in MongoDB.
+    No in-memory cache is kept — credentials are decrypted on-demand per request.
     """
     vault: CredentialVault = request.app.state.credential_vault
     await vault.store(body.origin, body.cookies, body.headers, body.userAgent)
@@ -37,7 +37,7 @@ async def push_auth_context(body: AuthContextRequest, request: Request):
 async def get_auth_context(origin: str, request: Request):
     """Dashboard retrieves auth context for a given origin.
 
-    Credentials are decrypted on-demand from CSFLE-encrypted storage.
+    Credentials are decrypted on-demand from QE-encrypted storage.
     """
     vault: CredentialVault = request.app.state.credential_vault
     ctx = await vault.get_context(origin)
@@ -53,7 +53,7 @@ async def list_credentials(request: Request):
     """
     vault: CredentialVault = request.app.state.credential_vault
     origins = await vault.list_origins()
-    return {"ok": True, "credentials": origins, "csfle": request.app.state.csfle_info}
+    return {"ok": True, "credentials": origins, "encryption": request.app.state.qe_info}
 
 
 @router.delete("/credentials/{origin:path}", dependencies=[Depends(verify_api_key)])

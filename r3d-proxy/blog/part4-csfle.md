@@ -2,6 +2,8 @@
 
 *This is Part 4 of a 6-part series on building R3D. [Start from Part 1](part1-architecture.md) for the full architecture overview.*
 
+> **Update:** R3D has since migrated from CSFLE to **MongoDB Queryable Encryption (QE)**, which replaces deterministic encryption with non-deterministic encryption and structured encrypted indexes. The CredentialVault pattern and KMS integration described below remain the same -- the cryptographic layer underneath changed. See the **[Queryable Encryption Deep Dive](QE.md)** for the current implementation.
+
 ---
 
 ## The Threat Model
@@ -323,3 +325,5 @@ For enterprise red teams handling sensitive credentials, this is the difference 
 ---
 
 *Next up: [Part 5 -- Operational Security: Stealth, Rotation, and Monitoring](part5-opsec.md)*
+
+*For the current encryption implementation, see [Queryable Encryption Deep Dive](QE.md).*

@@ -12,10 +12,14 @@ services:
       retries: 5
       start_period: 30s
 
-  # LocalStack KMS for CSFLE integration tests with AWS KMS provider
+  # LocalStack KMS for QE integration tests with AWS KMS provider
   localstack:
     image: localstack/localstack:latest
     hostname: localstack
+    networks:
+      default:
+        aliases:
+          - localhost.localstack.cloud
     environment:
       - SERVICES=kms
       - AWS_DEFAULT_REGION=us-east-1
@@ -45,13 +49,13 @@ services:
   test:
     build: .
     entrypoint: ["python", "-m", "pytest"]
-    command: ["-m", "csfle", "-v", "--tb=short"]
+    command: ["-m", "qe", "-v", "--tb=short"]
     environment:
       MDB_URI: mongodb://r3d:r3d@mongodb:27017/r3d_test?authSource=admin
       CRYPT_SHARED_LIB_PATH: /opt/mongodb/lib/mongo_crypt_v1.so
       R3D_API_KEY: test-key
       # Use local provider for tests (simpler, no LocalStack dependency)
-      # Switch to KMS_PROVIDER=aws + AWS_KMS_ENDPOINT=localstack:4566
+      # Switch to KMS_PROVIDER=aws + AWS_KMS_ENDPOINT=localhost.localstack.cloud:4566
       # to test the AWS KMS code path.
       LOCAL_MASTER_KEY: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5f
     depends_on:

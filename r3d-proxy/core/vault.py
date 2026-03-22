@@ -2,7 +2,7 @@
 
 Security properties:
   1. Decrypted credentials NEVER persist in process memory
-  2. Each request fetches + decrypts on-demand from CSFLE-encrypted MongoDB
+  2. Each request fetches + decrypts on-demand from QE-encrypted MongoDB
   3. Credentials exist only on the stack for the duration of the request
   4. Garbage collected immediately after use
   5. Memory dumps / core dumps / debugger attach cannot leak credentials
@@ -19,10 +19,10 @@ from datetime import datetime
 
 
 class CredentialVault:
-    """On-demand credential access via CSFLE. Never holds decrypted creds in memory."""
+    """On-demand credential access via Queryable Encryption. Never holds decrypted creds in memory."""
 
     def __init__(self, credentials_col):
-        """Initialize vault with CSFLE-encrypted credentials collection.
+        """Initialize vault with QE-encrypted credentials collection.
 
         Args:
             credentials_col: Motor collection with auto-decryption via AutoEncryptionOpts
@@ -41,7 +41,7 @@ class CredentialVault:
         if not doc:
             return {}
 
-        # Auto-decrypted by CSFLE — ephemeral, stack-only
+        # Auto-decrypted by QE — ephemeral, stack-only
         return {
             "cookies": doc.get("cookies", ""),
             "headers": json.loads(doc.get("headers_json", "{}")),
@@ -52,7 +52,7 @@ class CredentialVault:
     async def store(self, origin: str, cookies: str, headers: dict, user_agent: str):
         """Encrypt and persist credentials. No in-memory copy kept.
 
-        Credentials are encrypted by CSFLE before leaving the application.
+        Credentials are encrypted by QE before leaving the application.
         No plaintext credentials are written to MongoDB or kept in memory.
         """
         if self._col is None:
@@ -102,17 +102,17 @@ class CredentialVault:
         return sanitize_outbound_headers(h, profile)
 
     async def list_origins(self) -> list[dict]:
-        """Return credential metadata (origin, hasCookies, headerKeys) without full decrypt.
+        """Return credential metadata (origin, hasCookies, headerKeys).
 
-        Only retrieves metadata to avoid decrypting all credentials at once.
-        Individual credentials are decrypted on-demand when accessed.
+        QE auto-decrypts fields transparently. We only expose metadata
+        to avoid leaking full credentials over the API.
         """
         if self._col is None:
             return []
 
         results = []
         async for doc in self._col.find().sort("capturedAt", -1).limit(100):
-            # Auto-decrypted by CSFLE, but we only expose metadata
+            # Auto-decrypted by QE, but we only expose metadata
             results.append({
                 "origin": doc.get("origin", ""),
                 "hasCookies": bool(doc.get("cookies")),

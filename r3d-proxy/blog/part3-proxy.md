@@ -14,7 +14,7 @@ The Chrome extension sees everything the browser does. But there are things a br
 - **Clone and serve phishing pages.** You can't host a credential-harvesting site from a browser extension.
 - **Execute multi-step attack plans.** Chaining vulnerabilities across systems -- credential replay, pivot testing, parameter fuzzing, phishing -- requires orchestration that outlives any single browser tab.
 
-The R3D proxy is where all of this happens. It's a FastAPI application with 18 routers, backed by MongoDB for session persistence, LiteLLM for AI routing, and a CredentialVault for on-demand CSFLE decryption.
+The R3D proxy is where all of this happens. It's a FastAPI application with 18 routers, backed by MongoDB for session persistence, LiteLLM for AI routing, and a CredentialVault for on-demand Queryable Encryption decryption.
 
 ```mermaid
 flowchart TB
@@ -33,7 +33,7 @@ flowchart TB
     end
 
     subgraph shared [Shared Services]
-        Vault[CredentialVault<br/>on-demand CSFLE]
+        Vault[CredentialVault<br/>on-demand QE decrypt]
         StealthClient[Stealth HTTP Client<br/>TLS randomization]
         SSEBroadcast[SSE Broadcast<br/>real-time events]
     end
@@ -48,14 +48,14 @@ flowchart TB
     Attacks --> SSEBroadcast
     Scans --> SSEBroadcast
     Plans --> SSEBroadcast
-    Vault --> MongoDB[(MongoDB<br/>CSFLE encrypted)]
+    Vault --> MongoDB[(MongoDB<br/>QE encrypted)]
 ```
 
 ---
 
 ## Application Assembly
 
-The proxy assembles in `app.py`. The lifespan handler bootstraps CSFLE, connects to MongoDB, creates indexes, and initializes the credential vault:
+The proxy assembles in `app.py`. The lifespan handler bootstraps Queryable Encryption, connects to MongoDB, creates indexes, and initializes the credential vault:
 
 ```python
 @asynccontextmanager
@@ -66,12 +66,15 @@ async def lifespan(app: FastAPI):
 
     load_payloads()
     if MDB_URI:
-        auto_enc_opts, csfle_info = bootstrap_csfle(MDB_URI)
+        auto_enc_opts, qe_info = bootstrap_qe(MDB_URI)
         client = AsyncMongoClient(MDB_URI, auto_encryption_opts=auto_enc_opts)
         db = client.get_default_database(default="r3d")
         # ... collection assignments and index creation ...
         app.state.credential_vault = CredentialVault(app.state.credentials_col)
     yield
+    # Graceful shutdown: compact QE metadata
+    if MDB_URI and getattr(app.state, "sessions_col", None) is not None:
+        await compact_qe_metadata(app.state.sessions_col.database)
 
 app = FastAPI(title="R3D Proxy", version="5.3.0", lifespan=lifespan)
 ```
@@ -107,7 +110,7 @@ async def attack_fetch(body: ServerFetchRequest, request: Request):
         resp = await client.request(method=body.method, url=body.url, headers=merged, ...)
 ```
 
-When `useAuthContext` is true (the default), the vault decrypts stored cookies and headers for the target origin from CSFLE-encrypted MongoDB, merges them with any request-specific headers, and injects the result. The credentials exist only for the duration of this function call -- they're garbage collected afterward.
+When `useAuthContext` is true (the default), the vault decrypts stored cookies and headers for the target origin from QE-encrypted MongoDB, merges them with any request-specific headers, and injects the result. The credentials exist only for the duration of this function call -- they're garbage collected afterward.
 
 The response includes status, headers, body preview, and the full redirect history. An SSE event broadcasts the result to the dashboard and extension in real time.
 
@@ -372,4 +375,4 @@ The extension's "Open Dashboard" button deep-links to the active session with `#
 
 ---
 
-*Next up: [Part 4 -- MongoDB CSFLE + AWS KMS: Encrypting Credentials at the Field Level](part4-csfle.md)*
+*Next up: [Part 4 -- MongoDB CSFLE + AWS KMS: Encrypting Credentials at the Field Level](part4-csfle.md). For the current Queryable Encryption implementation, see the [QE deep-dive](QE.md).*

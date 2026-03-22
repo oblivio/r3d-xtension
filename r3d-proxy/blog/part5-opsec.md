@@ -397,7 +397,7 @@ The unauthenticated `/health` endpoint was stripped to minimal disclosure:
   "status": "ok",
   "version": "5.3.0",
   "mongodb": "connected",
-  "csfle": {"status": "enabled", "provider": "aws", "region": "us-east-1"},
+  "encryption": {"status": "enabled", "provider": "aws", "region": "us-east-1"},
   "model": "gemini/gemini-2.0-flash"
 }
 ```

@@ -10,6 +10,7 @@
 | 4 | [MongoDB CSFLE + AWS KMS: Encrypting Credentials at the Field Level](part4-csfle.md) |
 | 5 | [Operational Security: Stealth, Rotation, and Monitoring](part5-opsec.md) |
 | 6 | [From `docker-compose up` to Production: Deploying R3D](part6-deployment.md) |
+| | [Queryable Encryption Deep Dive](QE.md) -- standalone post on the CSFLE-to-QE migration |
 
 ---
 
@@ -41,7 +42,7 @@ flowchart TB
 
     subgraph proxy [R3D Proxy - FastAPI]
         API[18 Routers<br/>attacks, scans, plans, phish, ...]
-        Vault[CredentialVault<br/>on-demand CSFLE decrypt]
+        Vault[CredentialVault<br/>on-demand QE decrypt]
         LLM[LiteLLM Router<br/>Gemini / OpenAI / Azure]
         SSE[SSE Broadcast<br/>real-time events]
         Stealth[Stealth Client<br/>TLS fingerprint randomization]
@@ -61,7 +62,7 @@ flowchart TB
     API --> SSE
     API --> Stealth
     Vault --> MongoDB
-    MongoDB -->|CSFLE auto-encrypt| KMS
+    MongoDB -->|QE auto-encrypt| KMS
     SSE -.->|live updates| Extension
 ```
 
@@ -119,9 +120,9 @@ The application assembles 18 routers covering attacks, authentication, scanning,
 
 Session events are heterogeneous -- HTTP requests, findings, system fingerprints, attack graph nodes, credential snapshots -- each with different shapes. MongoDB's flexible schema means no migration headaches when the event format evolves.
 
-More importantly, MongoDB is the only database that offers **Client-Side Field-Level Encryption (CSFLE)**. With CSFLE, the application encrypts sensitive fields *before* they leave the process. The MongoDB server stores and indexes ciphertext it can never decrypt. When backed by AWS KMS, the master encryption key never leaves the HSM -- not even the application has the raw key material.
+More importantly, MongoDB is the only database that offers **Queryable Encryption (QE)**. With QE, the application encrypts sensitive fields *before* they leave the process using non-deterministic encryption -- the server stores and indexes ciphertext it can never decrypt, and identical plaintext values produce different ciphertext each time, preventing frequency analysis. When backed by AWS KMS, the master encryption key never leaves the HSM -- not even the application has the raw key material.
 
-For a tool that handles stolen credentials from Fortune 500 engagements, this isn't optional. We'll cover CSFLE in depth in [Part 4](part4-csfle.md).
+For a tool that handles stolen credentials from Fortune 500 engagements, this isn't optional. [Part 4](part4-csfle.md) covers the original CSFLE implementation, and the [QE deep-dive](QE.md) covers the migration to Queryable Encryption.
 
 ### LiteLLM for Multi-Provider Routing
 
@@ -147,7 +148,7 @@ response = await litellm.acompletion(
 Here's the end-to-end workflow during a web application security assessment:
 
 **1. Start the proxy.**
-`docker-compose up` brings up MongoDB, LocalStack KMS, the KMS initialization sidecar, and the R3D proxy. CSFLE bootstraps automatically -- the startup banner confirms `CSFLE: ✓ AWS KMS verified`.
+`docker-compose up` brings up MongoDB, LocalStack KMS, the KMS initialization sidecar, and the R3D proxy. Queryable Encryption bootstraps automatically -- the startup banner confirms `QE: ✓ AWS KMS verified`.
 
 **2. Install and connect the extension.**
 The extension auto-discovers the proxy by probing localhost ports and performing a `POST /r3d/handshake`. The proxy validates the extension ID, rate-limits the attempt, and mints a 24-hour JWT. The master API key is never transmitted.
@@ -159,7 +160,7 @@ Click "Launch Audit" in the side panel. The extension generates a random codenam
 Navigate the application normally. The service worker's analysis pipeline scores each request through header, cookie, JWT, IDOR, and RBAC auditors. The page-world script captures `fetch`/`XHR` bodies, dangerous sink calls, and prototype pollution attempts. Findings appear in the side panel in real time.
 
 **5. Store authentication context.**
-When the extension detects session cookies or authorization headers, it pushes them to the proxy via `POST /r3d/auth-context`. The proxy's `CredentialVault` encrypts them with CSFLE and stores them in MongoDB. The credentials now exist only as ciphertext on disk.
+When the extension detects session cookies or authorization headers, it pushes them to the proxy via `POST /r3d/auth-context`. The proxy's `CredentialVault` encrypts them with Queryable Encryption and stores them in MongoDB. The credentials now exist only as ciphertext on disk.
 
 **6. Run server-side attacks.**
 Click "Generate Exploit" on a finding. The AI generates a test -- which may be a browser snippet, a server-side HTTP replay, a parameter fuzz, or a multi-step attack plan. Server-side operations use the vault to inject stored credentials, bypass CORS, and control TLS fingerprints.
@@ -178,13 +179,13 @@ The proxy generates HTML proof pages, the dashboard aggregates findings with sev
 |-----------|------------|-----|
 | Extension | Chrome Manifest V3 | Side panel, service worker, MAIN world hooks |
 | Proxy | Python / FastAPI 5.3.0 | Async, dependency injection, 18+ routers |
-| Database | MongoDB (Atlas Local 8.0) | Flexible schema, CSFLE support |
-| Encryption | MongoDB CSFLE + AWS KMS | Field-level, client-side, HSM-backed |
+| Database | MongoDB (Atlas Local 8.0) | Flexible schema, Queryable Encryption |
+| Encryption | MongoDB QE + AWS KMS | Field-level, client-side, HSM-backed |
 | LLM | LiteLLM | Multi-provider routing (Gemini, OpenAI, Azure) |
 | HTTP Client | httpx with HTTP/2 | Stealth TLS fingerprinting |
 | Auth | JWT + bcrypt | Token rotation, multi-user RBAC |
 | Infrastructure | Docker Compose, Terraform | LocalStack dev, production IAM/KMS |
-| Testing | pytest + pytest-asyncio | Unit, API, and CSFLE integration tests |
+| Testing | pytest + pytest-asyncio | Unit, API, and QE integration tests |
 | Reports | WeasyPrint + Jinja2 | PDF generation from templates |
 
 ---
@@ -197,7 +198,7 @@ This post covered the *why* and the *what*. The remaining five parts go deep on 
 
 - **[Part 3](part3-proxy.md)** walks through the FastAPI proxy -- server-side HTTP replay, AI-powered attack planning, phishing infrastructure, and the real-time event system.
 
-- **[Part 4](part4-csfle.md)** is the security deep-dive -- MongoDB CSFLE with AWS KMS, the CredentialVault pattern, and why on-demand decryption is worth the 5ms overhead.
+- **[Part 4](part4-csfle.md)** is the security deep-dive -- MongoDB encryption with AWS KMS, the CredentialVault pattern, and why on-demand decryption is worth the 5ms overhead. The [QE deep-dive](QE.md) covers the subsequent migration to Queryable Encryption.
 
 - **[Part 5](part5-opsec.md)** covers operational security -- TLS fingerprint randomization, JWT rotation, handshake hardening, internal-only monitoring, and container lockdown.
 

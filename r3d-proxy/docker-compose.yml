@@ -19,6 +19,10 @@ services:
   localstack:
     image: localstack/localstack:latest
     hostname: localstack
+    networks:
+      default:
+        aliases:
+          - localhost.localstack.cloud
     environment:
       - SERVICES=kms
       - AWS_DEFAULT_REGION=us-east-1
@@ -65,7 +69,7 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       AWS_DEFAULT_REGION: us-east-1
-      AWS_KMS_ENDPOINT: "localstack:4566"  # host:port only — libmongocrypt adds HTTPS
+      AWS_KMS_ENDPOINT: "localhost.localstack.cloud:4566"  # matches LocalStack's TLS cert CN
       # Extension security
       R3D_ALLOWED_EXTENSION_IDS: "*"  # Set to actual extension ID in production
       # Stealth mode
@@ -98,7 +102,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 45s  # CSFLE bootstrap + KMS retries can take time
+      start_period: 45s  # QE bootstrap + KMS retries can take time
     depends_on:
       mongodb:
         condition: service_healthy
