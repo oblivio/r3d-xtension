@@ -4,8 +4,15 @@ import os
 from datetime import datetime, timezone
 
 MDB_URI = os.environ.get("MDB_URI", "")
-DEFAULT_MODEL = os.environ.get("LITELLM_MODEL", "gemini/gemini-2.5-pro")
+DEFAULT_MODEL = os.environ.get("R3D_MODEL") or os.environ.get("LITELLM_MODEL", "gemini/gemini-2.5-pro")
 R3D_API_KEY = os.environ.get("R3D_API_KEY", "")
+
+# LLM provider credentials
+AZURE_API_KEY = os.environ.get("AZURE_API_KEY", "")
+AZURE_API_BASE = os.environ.get("AZURE_API_BASE", "")
+AZURE_API_VERSION = os.environ.get("AZURE_API_VERSION", "2024-08-01-preview")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 _DEFAULT_CORS = "http://localhost:4000,http://127.0.0.1:4000"
 CORS_ORIGINS = [

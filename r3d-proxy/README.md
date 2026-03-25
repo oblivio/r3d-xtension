@@ -1,6 +1,6 @@
 # R3D Proxy Server
 
-FastAPI backend that provides MongoDB-backed session persistence and LLM routing via [LiteLLM](https://github.com/BerriAI/litellm) for the R3D Chrome extension.
+FastAPI backend that provides MongoDB-backed session persistence and multi-provider LLM routing for the R3D Chrome extension.
 
 ## Prerequisites
 
@@ -69,7 +69,7 @@ All request/response schemas are auto-generated from Pydantic models. Once the s
 | `AZURE_API_KEY` | For Azure OpenAI | Azure OpenAI API key |
 | `AZURE_API_BASE` | For Azure OpenAI | Azure endpoint URL (e.g. `https://your-resource.openai.azure.com`) |
 | `AZURE_API_VERSION` | For Azure OpenAI | Azure API version (e.g. `2024-08-01-preview`) |
-| `LITELLM_MODEL` | No | Default model (default: `gemini/gemini-2.5-pro`). Prefix determines provider: `gemini/...`, `gpt-4o`, `azure/deployment-name`. |
+| `R3D_MODEL` | No | Default model (default: `gemini/gemini-2.5-pro`). Prefix determines provider: `gemini/...`, `gpt-4o`, `azure/deployment-name`. (`LITELLM_MODEL` still works as a fallback.) |
 | `PORT` | No | Server port (default: `4000`) |
 | `R3D_API_KEY` | No | When set, all non-health endpoints require `Authorization: Bearer <key>`. Local Docker defaults to `r3d-local-dev-key`. |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins (default: `http://localhost:4000,http://127.0.0.1:4000`). Set to your extension origin for production. |
@@ -80,7 +80,7 @@ All request/response schemas are auto-generated from Pydantic models. Once the s
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/chat/completions` | OpenAI-compatible chat completions via LiteLLM |
+| POST | `/v1/chat/completions` | OpenAI-compatible chat completions proxy |
 
 ### Session CRUD
 

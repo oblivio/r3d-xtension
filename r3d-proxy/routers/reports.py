@@ -2,7 +2,6 @@
 
 import json
 
-import litellm
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -10,6 +9,7 @@ from pydantic import BaseModel
 from core.audit import audit_log
 from core.auth import verify_api_key
 from core.config import DEFAULT_MODEL
+from core.llm import acompletion
 from core.db import get_sessions_col
 from reports.generator import generate_report
 
@@ -67,7 +67,7 @@ async def generate(sid: str, body: ReportRequest, request: Request):
                 "complianceGaps (array of {{framework, gap}}), attackVectors (array of {{vector, test}})"
             )
             try:
-                resp = await litellm.acompletion(
+                resp = await acompletion(
                     model=DEFAULT_MODEL,
                     messages=[
                         {"role": "system", "content": "You are R3D, an offensive security intelligence system generating engagement reports."},

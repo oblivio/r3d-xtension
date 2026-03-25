@@ -1,12 +1,12 @@
 """LLM proxy and dashboard AI analysis."""
 
-import litellm
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.auth import verify_api_key
 from core.config import DEFAULT_MODEL
+from core.llm import acompletion
 
 router = APIRouter(tags=["llm"])
 
@@ -61,7 +61,7 @@ _ANALYZE_SYSTEM_PROMPT = (
 
 @router.post("/v1/chat/completions", dependencies=[Depends(verify_api_key)])
 async def chat_completions(body: ChatCompletionRequest):
-    """OpenAI-compatible chat completions via LiteLLM."""
+    """OpenAI-compatible chat completions proxy."""
     try:
         kwargs = dict(
             model=body.model or DEFAULT_MODEL,
@@ -71,7 +71,7 @@ async def chat_completions(body: ChatCompletionRequest):
         )
         if body.response_format:
             kwargs["response_format"] = body.response_format
-        response = await litellm.acompletion(**kwargs)
+        response = await acompletion(**kwargs)
         return JSONResponse(content=response.model_dump())
     except Exception as e:
         return JSONResponse(status_code=502, content={"error": str(e)})
@@ -81,7 +81,7 @@ async def chat_completions(body: ChatCompletionRequest):
 async def analyze(body: AnalyzeRequest):
     """Run an AI analysis from the dashboard."""
     try:
-        response = await litellm.acompletion(
+        response = await acompletion(
             model=DEFAULT_MODEL,
             messages=[
                 {"role": "system", "content": _ANALYZE_SYSTEM_PROMPT},

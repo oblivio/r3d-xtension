@@ -2,13 +2,13 @@
 
 import json
 
-import litellm
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.auth import verify_api_key
 from core.config import DEFAULT_MODEL, now
+from core.llm import acompletion
 from core.db import get_sessions_col
 from core.sse import broadcast
 from graph_builder import build_graph_from_session, find_all_attack_paths
@@ -144,7 +144,7 @@ async def enrich_graph(sid: str, request: Request):
     )
 
     try:
-        response = await litellm.acompletion(
+        response = await acompletion(
             model=DEFAULT_MODEL,
             messages=[
                 {"role": "system", "content": "You are R3D, an offensive security intelligence system."},

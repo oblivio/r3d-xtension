@@ -7,13 +7,13 @@ import asyncio
 import json
 from urllib.parse import urlparse
 
-import litellm
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.auth import verify_api_key
 from core.config import DEFAULT_MODEL, now
+from core.llm import acompletion
 from core.db import get_sessions_col
 from core.opsec import throttle
 from core.replay import get_http_client
@@ -139,7 +139,7 @@ async def attack_pivot(sid: str, body: PivotRequest, request: Request):
     )
 
     try:
-        ai_response = await litellm.acompletion(
+        ai_response = await acompletion(
             model=DEFAULT_MODEL,
             messages=[
                 {"role": "system", "content": "You are R3D, an offensive security intelligence system."},
@@ -351,7 +351,7 @@ async def generate_attack_plan(sid: str, body: PlanGenerateRequest, request: Req
     )
 
     try:
-        response = await litellm.acompletion(
+        response = await acompletion(
             model=DEFAULT_MODEL,
             messages=[
                 {"role": "system", "content": "You are R3D, an offensive security intelligence system generating executable attack plans."},
@@ -727,7 +727,7 @@ async def execute_attack_plan(sid: str, body: PlanExecuteRequest, request: Reque
             '"recommendations" — array of remediation steps'
         )
         try:
-            vr = await litellm.acompletion(
+            vr = await acompletion(
                 model=DEFAULT_MODEL,
                 messages=[
                     {"role": "system", "content": "You are R3D. Summarize these attack plan execution results."},
